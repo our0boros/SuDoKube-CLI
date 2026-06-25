@@ -27,6 +27,9 @@ pub enum AppScreen {
     Game,
     Settings,
     Generating,
+    Victory,
+    ExportSelect,
+    ImportInput,
 }
 
 /// 可配置项
@@ -43,6 +46,7 @@ pub struct AppSettings {
     pub cube_height: String,          // "14", "16", "18", "20", "22"
     pub debug_mode: String,           // "off", "on"
     pub language: String,             // "zh", "en", "ja"
+    pub naming_mode: String,          // "vivid", "numeric"
 }
 
 impl Default for AppSettings {
@@ -60,6 +64,7 @@ impl Default for AppSettings {
             cube_height: "18".into(),
             debug_mode: "off".into(),
             language: lang,
+            naming_mode: "vivid".into(),
         }
     }
 }
@@ -80,6 +85,7 @@ impl AppSettings {
             cube_height: save::load_setting("cube_height").ok().flatten().unwrap_or(def.cube_height),
             debug_mode: save::load_setting("debug_mode").ok().flatten().unwrap_or(def.debug_mode),
             language: save::load_setting("language").ok().flatten().unwrap_or(def.language),
+            naming_mode: save::load_setting("naming_mode").ok().flatten().unwrap_or(def.naming_mode),
         }
     }
 
@@ -95,6 +101,7 @@ impl AppSettings {
         let _ = save::save_setting("cube_height", &self.cube_height);
         let _ = save::save_setting("debug_mode", &self.debug_mode);
         let _ = save::save_setting("language", &self.language);
+        let _ = save::save_setting("naming_mode", &self.naming_mode);
     }
 }
 
@@ -135,6 +142,8 @@ pub enum MenuItem {
     NewGame(Difficulty),
     Continue(GameRecord),
     Settings,
+    Export,
+    Import,
 }
 
 pub struct MenuState {
@@ -149,6 +158,8 @@ impl MenuState {
             MenuItem::NewGame(Difficulty::Medium),
             MenuItem::NewGame(Difficulty::Hard),
             MenuItem::Settings,
+            MenuItem::Export,
+            MenuItem::Import,
         ];
         let unfinished = save::load_unfinished(20).unwrap_or_default();
         for record in unfinished {
@@ -184,6 +195,9 @@ pub struct App {
     pub generating: Option<GeneratingState>,
     pub cube_angle_y: f64,  // 3D cube Y-axis rotation angle
     pub cube_angle_x: f64,  // 3D cube X-axis rotation angle
+    pub victory_countdown: Option<Instant>,  // Victory screen countdown
+    pub import_buffer: String,               // Import input buffer
+    pub export_select: usize,                // 0=encrypted, 1=plaintext
 }
 
 impl App {
@@ -209,6 +223,9 @@ impl App {
             generating: None,
             cube_angle_y: 0.0,
             cube_angle_x: 0.0,
+            victory_countdown: None,
+            import_buffer: String::new(),
+            export_select: 0,
         }
     }
 
@@ -216,6 +233,7 @@ impl App {
         Self {
             screen: AppScreen::Game,
             game,
+            victory_countdown: None,
             ..Self::new_menu()
         }
     }
@@ -274,6 +292,7 @@ impl SettingsState {
         let cube_heights = vec!["14".into(), "16".into(), "18".into(), "20".into(), "22".into()];
         let debug_modes = vec!["off".into(), "on".into()];
         let languages = vec!["zh".into(), "en".into(), "ja".into()];
+        let naming_modes = vec!["vivid".into(), "numeric".into()];
 
         let fields = vec![
             SettingsField::new("Cell Width", &s.standard_cell_width.to_string(), widths),
@@ -287,6 +306,7 @@ impl SettingsState {
             SettingsField::new("Cube Height", &s.cube_height, cube_heights),
             SettingsField::new("Debug Mode", &s.debug_mode, debug_modes),
             SettingsField::new("Language", &s.language, languages),
+            SettingsField::new("Naming Mode", &s.naming_mode, naming_modes),
         ];
         Self { fields, selected: 0 }
     }
@@ -303,6 +323,7 @@ impl SettingsState {
         s.cube_height = self.fields[8].value.clone();
         s.debug_mode = self.fields[9].value.clone();
         s.language = self.fields[10].value.clone();
+        s.naming_mode = self.fields[11].value.clone();
     }
 }
 
@@ -357,6 +378,15 @@ fn run_app(mut terminal: Terminal<ratatui::backend::CrosstermBackend<io::Stdout>
         // 3D立方体自动旋转（两轴不同周期）
         app.cube_angle_y += 0.03;
         app.cube_angle_x += 0.02;
+
+        // 胜利倒计时
+        if app.screen == AppScreen::Victory {
+            if let Some(until) = app.victory_countdown {
+                if Instant::now() >= until {
+                    app = App::new_menu();
+                }
+            }
+        }
 
         // 检查生成进度
         if app.screen == AppScreen::Generating {

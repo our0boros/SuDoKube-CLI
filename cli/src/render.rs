@@ -6,6 +6,7 @@ use ratatui::{
     widgets::{Block, Paragraph},
 };
 use sudokube_core::cube::Face;
+use std::time::Instant;
 
 use crate::{App, AppScreen, MenuItem, total_elapsed, AppSettings};
 use crate::i18n::{self, Lang};
@@ -98,6 +99,9 @@ pub fn draw(f: &mut Frame, app: &App) {
         AppScreen::Game => draw_game(f, app),
         AppScreen::Settings => draw_settings(f, app),
         AppScreen::Generating => draw_generating(f, app),
+        AppScreen::Victory => draw_victory(f, app),
+        AppScreen::ExportSelect => draw_export_select(f, app),
+        AppScreen::ImportInput => draw_import_input(f, app),
     }
 }
 
@@ -143,12 +147,26 @@ fn draw_menu(f: &mut Frame, app: &App) {
             format!("{} - {}", i18n::t("menu.new_easy", lang).split(" - ").next().unwrap_or("New"), i18n::t(diff_key, lang))
         }
         MenuItem::Settings => i18n::t("menu.settings", lang).into(),
-        MenuItem::Continue(r) => format!(
-            "{} #{} | {} | {:02}:{:02} | {}",
-            i18n::t("menu.continue", lang), r.id, r.difficulty,
-            r.elapsed_seconds / 60, r.elapsed_seconds % 60,
-            if r.completed { i18n::t("menu.completed", lang) } else { i18n::t("menu.in_progress", lang) }
-        ),
+        MenuItem::Export => i18n::t("menu.export", lang).into(),
+        MenuItem::Import => i18n::t("menu.import", lang).into(),
+        MenuItem::Continue(r) => {
+            let total = r.answer.len() + r.puzzle.values().filter(|&&v| v == 0).count();
+            let filled = r.puzzle.values().filter(|&&v| v > 0).count();
+            let remaining = total.saturating_sub(filled);
+            let name = if app.settings.naming_mode == "vivid" {
+                i18n::vivid_name(r.id, lang)
+            } else {
+                format!("#{}", r.id)
+            };
+            format!(
+                "{} {} | {} | {} | {}/{} | {:02}:{:02} | {}",
+                i18n::t("menu.continue", lang), name, r.difficulty,
+                r.started_at.format("%m-%d").to_string(),
+                remaining, total,
+                r.elapsed_seconds / 60, r.elapsed_seconds % 60,
+                if r.completed { i18n::t("menu.completed", lang) } else { i18n::t("menu.in_progress", lang) }
+            )
+        }
     }).collect();
 
     let max_text_w = item_texts.iter().map(|t| display_width(t) + 4).max().unwrap_or(20);
@@ -281,11 +299,27 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
 
     // 信息栏宽度和位置
     let lang = Lang::from_code(&app.settings.language);
+    let total = app.game.grid.cells.len();
+    let filled = app.game.grid.cells.values().filter(|c| c.user_value.is_some()).count();
+    let remaining = total - filled;
+    let game_name = app.game.id.map_or(i18n::t("game.unnamed", lang).to_string(), |id| {
+        if app.settings.naming_mode == "vivid" {
+            i18n::vivid_name(id, lang)
+        } else {
+            format!("#{}", id)
+        }
+    });
     let info_text = format!(
-        "  [{}] 面:{}  难度:{}  时间:{}  ",
+        "  {} [{}] {}:{} {}:{} {}/{} {}:{}  ",
+        game_name,
         mode_label(app.render_mode, lang),
+        i18n::t("info.face", lang),
         face_name(app.current_face, lang),
+        i18n::t("info.diff", lang),
         app.game.difficulty.as_str(),
+        remaining,
+        total,
+        i18n::t("info.time", lang),
         format_timer(app)
     );
     let info_w = display_width(&info_text) as u16 + 4;
@@ -358,11 +392,27 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
 
 fn draw_info_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
     let lang = Lang::from_code(&app.settings.language);
+    let total = app.game.grid.cells.len();
+    let filled = app.game.grid.cells.values().filter(|c| c.user_value.is_some()).count();
+    let remaining = total - filled;
+    let game_name = app.game.id.map_or(i18n::t("game.unnamed", lang).to_string(), |id| {
+        if app.settings.naming_mode == "vivid" {
+            i18n::vivid_name(id, lang)
+        } else {
+            format!("#{}", id)
+        }
+    });
     let info_text = format!(
-        "  [{}] 面:{}  难度:{}  时间:{}  ",
+        "  {} [{}] {}:{} {}:{} {}/{} {}:{}  ",
+        game_name,
         mode_label(app.render_mode, lang),
+        i18n::t("info.face", lang),
         face_name(app.current_face, lang),
+        i18n::t("info.diff", lang),
         app.game.difficulty.as_str(),
+        remaining,
+        total,
+        i18n::t("info.time", lang),
         format_timer(app)
     );
     let inner_w = display_width(&info_text);
@@ -945,8 +995,14 @@ fn draw_settings(f: &mut Frame, app: &App) {
     for (i, field) in fields.iter().enumerate() {
         let row = box_y + 3 + i as u16;
         let is_selected = i == app.settings_ui.selected;
+        // Translate special values
+        let display_value = if field.label == "Naming Mode" {
+            i18n::t(&format!("naming.{}", field.value), lang).to_string()
+        } else {
+            field.value.clone()
+        };
         let label_part = format!(" {} ", field.label);
-        let value_part = format!(" < {} >", field.value);
+        let value_part = format!(" < {} >", display_value);
         let padding = inner_w.saturating_sub(display_width(&label_part) + display_width(&value_part));
         let line_text = format!("{}{}{}", label_part, " ".repeat(padding), value_part);
 
@@ -979,6 +1035,178 @@ fn draw_settings(f: &mut Frame, app: &App) {
         Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
         Rect::new(box_x, bot_row, box_w, 1),
     );
+}
+
+// ── 胜利画面 ──
+
+fn draw_victory(f: &mut Frame, app: &App) {
+    let area = f.area();
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        area,
+    );
+
+    let lang = Lang::from_code(&app.settings.language);
+    let title = i18n::t("victory.title", lang);
+    let subtitle = i18n::t("victory.subtitle", lang);
+
+    // Calculate remaining seconds
+    let remaining_secs = app.victory_countdown
+        .map(|until| {
+            let left = (until - Instant::now()).as_secs() as u32;
+            left.max(0)
+        })
+        .unwrap_or(0);
+
+    let countdown_text = format!("{}  |  {}", i18n::t("victory.enter", lang), format!("{}", remaining_secs));
+
+    let box_w = 36u16;
+    let box_h = 6u16;
+    let box_x = area.x + area.width.saturating_sub(box_w) / 2;
+    let box_y = area.y + area.height.saturating_sub(box_h) / 2;
+
+    let inner_w = box_w as usize - 2;
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+
+    // Top
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(Color::Yellow)),
+        Rect::new(box_x, box_y, box_w, 1),
+    );
+    // Title
+    let title_line = format!("│{:^width$}│", title, width = inner_w);
+    f.render_widget(
+        Paragraph::new(title_line).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Rect::new(box_x, box_y + 1, box_w, 1),
+    );
+    // Subtitle
+    let sub_line = format!("│{:^width$}│", subtitle, width = inner_w);
+    f.render_widget(
+        Paragraph::new(sub_line).style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Rect::new(box_x, box_y + 2, box_w, 1),
+    );
+    // Separator
+    let sep = format!("╟{}╢", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(sep).style(Style::default().fg(Color::Yellow)),
+        Rect::new(box_x, box_y + 3, box_w, 1),
+    );
+    // Info
+    let diff = app.game.difficulty.as_str();
+    let elapsed = total_elapsed(app);
+    let info_line = format!("│ {:^width$} │", format!("{}  {:02}:{:02}", diff, elapsed / 60, elapsed % 60), width = inner_w - 2);
+    f.render_widget(
+        Paragraph::new(info_line).style(Style::default().fg(Color::White)),
+        Rect::new(box_x, box_y + 4, box_w, 1),
+    );
+    // Bottom + countdown
+    let bot_line = format!("│{:^width$}│", countdown_text, width = inner_w);
+    f.render_widget(
+        Paragraph::new(bot_line).style(Style::default().fg(Color::DarkGray)),
+        Rect::new(box_x, box_y + 5, box_w, 1),
+    );
+    // Bottom border
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(Color::Yellow)),
+        Rect::new(box_x, box_y + box_h, box_w, 1),
+    );
+}
+
+// ── 导出选择画面 ──
+
+fn draw_export_select(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let lang = Lang::from_code(&app.settings.language);
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        area,
+    );
+
+    let box_w = 34u16;
+    let box_h = 5u16;
+    let box_x = area.x + area.width.saturating_sub(box_w) / 2;
+    let box_y = area.y + area.height.saturating_sub(box_h) / 2;
+    let inner_w = box_w as usize - 2;
+
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+    let title = format!("│{:^width$}│", i18n::t("menu.export", lang), width = inner_w);
+
+    f.render_widget(Paragraph::new(top).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y, box_w, 1));
+    f.render_widget(Paragraph::new(title).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + 1, box_w, 1));
+
+    let sep = format!("╟{}╢", "─".repeat(inner_w));
+    f.render_widget(Paragraph::new(sep).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + 2, box_w, 1));
+
+    let opts = [
+        i18n::t("export.encrypted", lang),
+        i18n::t("export.plaintext", lang),
+    ];
+    for (i, label) in opts.iter().enumerate() {
+        let is_sel = i == app.export_select;
+        let prefix = if is_sel { ">" } else { " " };
+        let text = format!("{} {}", prefix, label);
+        let style = if is_sel {
+            Style::default().bg(Color::White).fg(Color::Black)
+        } else {
+            Style::default().bg(Color::Black).fg(Color::White)
+        };
+        let line = format!("│{:<width$}│", text, width = inner_w);
+        f.render_widget(Paragraph::new(line).style(style), Rect::new(box_x, box_y + 3 + i as u16, box_w, 1));
+    }
+    f.render_widget(Paragraph::new(bot).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + box_h, box_w, 1));
+}
+
+// ── 导入输入画面 ──
+
+fn draw_import_input(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let lang = Lang::from_code(&app.settings.language);
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        area,
+    );
+
+    let box_w = 50u16;
+    let box_h = 5u16;
+    let box_x = area.x + area.width.saturating_sub(box_w) / 2;
+    let box_y = area.y + area.height.saturating_sub(box_h) / 2;
+    let inner_w = box_w as usize - 2;
+
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+    let title = format!("│{:^width$}│", i18n::t("menu.import", lang), width = inner_w);
+
+    f.render_widget(Paragraph::new(top).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y, box_w, 1));
+    f.render_widget(Paragraph::new(title).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + 1, box_w, 1));
+
+    let sep = format!("╟{}╢", "─".repeat(inner_w));
+    f.render_widget(Paragraph::new(sep).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + 2, box_w, 1));
+
+    // Input field
+    let display_text = if app.import_buffer.is_empty() {
+        i18n::t("import.paste", lang).to_string()
+    } else {
+        let buf = &app.import_buffer;
+        if buf.len() > inner_w - 4 {
+            format!("{}...", &buf[buf.len() - inner_w + 7..])
+        } else {
+            buf.clone()
+        }
+    };
+    let input_style = if app.import_buffer.is_empty() {
+        Style::default().fg(Color::DarkGray)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let input_line = format!("│ {:<width$} │", display_text, width = inner_w - 2);
+    f.render_widget(Paragraph::new(input_line).style(input_style), Rect::new(box_x, box_y + 3, box_w, 1));
+
+    let hint = format!("│{:^width$}│", "Enter OK / Esc Cancel", width = inner_w);
+    f.render_widget(Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)), Rect::new(box_x, box_y + 4, box_w, 1));
+
+    f.render_widget(Paragraph::new(bot).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + box_h, box_w, 1));
 }
 
 // ── 生成进度画面 ──

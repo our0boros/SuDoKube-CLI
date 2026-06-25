@@ -90,4 +90,65 @@ tr_map! {
 
     // Debug
     "debug.hint" => { zh: "已提示", en: "Hinted", ja: "ﾋﾝﾄ済み" },
+
+    // Info bar
+    "info.face" => { zh: "面", en: "Face", ja: "面" },
+    "info.diff" => { zh: "难度", en: "Diff", ja: "難度" },
+    "info.time" => { zh: "时间", en: "Time", ja: "時間" },
+    "game.unnamed" => { zh: "新对局", en: "New", ja: "新規" },
+
+    // Victory
+    "victory.title" => { zh: "恭喜通关!", en: "Victory!", ja: "クリア!" },
+    "victory.subtitle" => { zh: "你赢了 ヾ(≧▽≦*)o", en: "You won! (≧▽≦)", ja: "クリア! ヾ(≧▽≦)o" },
+    "victory.countdown" => { zh: "自动返回 {}s", en: "Auto back {}s", ja: "自動戻り {}s" },
+    "victory.enter" => { zh: "按 Enter 返回", en: "Press Enter to return", ja: "Enterで戻る" },
+
+    // Menu extra
+    "menu.export" => { zh: "导出对局", en: "Export Game", ja: "対局ｴｸｽﾎﾟｰﾄ" },
+    "menu.import" => { zh: "导入对局", en: "Import Game", ja: "対局ｲﾝﾎﾟｰﾄ" },
+
+    // Export
+    "export.encrypted" => { zh: "加密导出", en: "Encrypted Export", ja: "暗号化ｴｸｽﾎﾟｰﾄ" },
+    "export.plaintext" => { zh: "明文导出", en: "Plaintext Export", ja: "平文ｴｸｽﾎﾟｰﾄ" },
+    "export.copied" => { zh: "已复制到剪贴板", en: "Copied to clipboard", ja: "ｸﾘｯﾌﾟﾎﾞｰﾄﾞにｺﾋﾟｰ" },
+    "import.paste" => { zh: "请粘贴对局数据后按 Enter", en: "Paste game data then Enter", ja: "対局ﾃﾞｰﾀを貼付けてEnter" },
+    "import.success" => { zh: "导入成功!", en: "Import successful!", ja: "ｲﾝﾎﾟｰﾄ成功!" },
+    "import.fail" => { zh: "导入失败: 无效数据", en: "Import failed: invalid data", ja: "ｲﾝﾎﾟｰﾄ失敗: 無効ﾃﾞｰﾀ" },
+
+    // Naming mode
+    "naming.vivid" => { zh: "生动", en: "Vivid", ja: "鮮やか" },
+    "naming.numeric" => { zh: "数字", en: "Numeric", ja: "数字" },
+}
+
+/// Adjective names for vivid naming mode
+pub fn adjectives(lang: Lang) -> &'static [&'static str] {
+    match lang {
+        Lang::Zh => &["兴奋的", "快乐的", "安静的", "勇敢的", "聪明的", "温柔的", "活泼的", "优雅的", "坚定的", "灵巧的",
+                      "热情的", "悠闲的", "可爱的", "神秘的", "淡定的", "潇洒的", "顽强的", "机智的", "沉着的", "霸气的"],
+        Lang::En => &["Excited", "Happy", "Quiet", "Brave", "Clever", "Gentle", "Lively", "Elegant", "Steady", "Nimble",
+                      "Warm", "Relaxed", "Cute", "Mysterious", "Calm", "Cool", "Tough", "Witty", "Poised", "Bold"],
+        Lang::Ja => &["興奮の", "楽しい", "静かな", "勇敢な", "聡明な", "優しい", "活発な", "優雅な", "堅実な", "機敏な",
+                      "情熱の", "のんきな", "かわいい", "神秘の", "冷静な", "かっこいい", "しぶとい", "機知な", "落ち着いた", "豪快な"],
+    }
+}
+
+/// Animal names for vivid naming mode
+pub fn animals(lang: Lang) -> &'static [&'static str] {
+    match lang {
+        Lang::Zh => &["熊猫", "狐狸", "兔子", "老虎", "海豚", "猫头鹰", "松鼠", "企鹅", "鹿", "鲸鱼",
+                      "小猫", "柴犬", "鹦鹉", "海龟", "刺猬", "水獭", "浣熊", "考拉", "火烈鸟", "独角兽"],
+        Lang::En => &["Panda", "Fox", "Rabbit", "Tiger", "Dolphin", "Owl", "Squirrel", "Penguin", "Deer", "Whale",
+                      "Cat", "Shiba", "Parrot", "Turtle", "Hedgehog", "Otter", "Raccoon", "Koala", "Flamingo", "Unicorn"],
+        Lang::Ja => &["パンダ", "キツネ", "ウサギ", "トラ", "イルカ", "フクロウ", "リス", "ペンギン", "シカ", "クジラ",
+                      "ネコ", "シバ", "オウム", "カメ", "ハリネズミ", "カワウソ", "アライグマ", "コアラ", "フラミンゴ", "ユニコーン"],
+    }
+}
+
+/// Generate a vivid name like "兴奋的熊猫#1"
+pub fn vivid_name(id: i64, lang: Lang) -> String {
+    let adjs = adjectives(lang);
+    let anms = animals(lang);
+    let adj = adjs[(id as usize).wrapping_rem(adjs.len())];
+    let anm = anms[(id as usize).wrapping_rem(anms.len())];
+    format!("{}{}#{}", adj, anm, id)
 }

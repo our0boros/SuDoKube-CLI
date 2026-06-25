@@ -10,6 +10,8 @@ use crate::{App, AppScreen, MenuItem, current_coord};
 use crate::render::{ButtonId, GameLayout, compute_game_layout_from_rect, find_button_at, cell_at, mode_label};
 use crate::save::delete_game;
 use crate::i18n::{self, Lang};
+use sudokube_core::game_state::GameState;
+use std::time::Instant;
 
 pub enum EventResult {
     Continue,
@@ -24,8 +26,98 @@ pub fn handle_event(app: &mut App, event: Event, area: Rect) -> EventResult {
         AppScreen::Menu => handle_menu_event(app, event, area),
         AppScreen::Game => handle_game_event(app, event, area),
         AppScreen::Settings => handle_settings_event(app, event),
-        AppScreen::Generating => EventResult::Continue, // 生成中忽略所有输入
+        AppScreen::Generating => EventResult::Continue,
+        AppScreen::Victory => handle_victory_event(app, event),
+        AppScreen::ExportSelect => handle_export_select_event(app, event),
+        AppScreen::ImportInput => handle_import_input_event(app, event),
     }
+}
+
+fn handle_victory_event(app: &mut App, event: Event) -> EventResult {
+    if let Event::Key(key) = event {
+        if key.kind == KeyEventKind::Press && key.code == KeyCode::Enter {
+            *app = App::new_menu();
+            return EventResult::Continue;
+        }
+    }
+    EventResult::Continue
+}
+
+fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
+    if let Event::Key(key) = event {
+        if key.kind != KeyEventKind::Press { return EventResult::Continue; }
+        match key.code {
+            KeyCode::Up => { if app.export_select > 0 { app.export_select -= 1; } }
+            KeyCode::Down => { if app.export_select < 1 { app.export_select += 1; } }
+            KeyCode::Enter => {
+                // Need a game to export - use the most recent unfinished game
+                let unfinished = crate::save::load_unfinished(1).ok().and_then(|v| v.into_iter().next());
+                if let Some(record) = unfinished {
+                    let game = crate::continue_game(&record);
+                    let encrypted = app.export_select == 0;
+                    let data = crate::save::export_game(&game, encrypted);
+                    if crate::save::copy_to_clipboard(&data) {
+                        let lang = Lang::from_code(&app.settings.language);
+                        app.screen = AppScreen::Menu;
+                        app.set_message(i18n::t("export.copied", lang), Duration::from_secs(2));
+                    }
+                }
+            }
+            KeyCode::Esc => { app.screen = AppScreen::Menu; }
+            _ => {}
+        }
+    }
+    EventResult::Continue
+}
+
+fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
+    if let Event::Key(key) = event {
+        if key.kind != KeyEventKind::Press { return EventResult::Continue; }
+        match key.code {
+            KeyCode::Enter => {
+                let data = app.import_buffer.trim().to_string();
+                if let Some((diff_str, answer_str, puzzle_str, given_str)) = crate::save::import_game(&data) {
+                    // Create game from imported data
+                    let coords: Vec<sudokube_core::cube::CubeCoord> = sudokube_core::cube::iter_surface_coords().collect();
+                    let answer = crate::save::deserialize_solution_from(&answer_str, &coords);
+                    let puzzle_grid = crate::save::deserialize_grid_from(&puzzle_str, &given_str, &coords);
+
+                    let difficulty = match diff_str.as_str() {
+                        "easy" => Difficulty::Easy,
+                        "hard" => Difficulty::Hard,
+                        _ => Difficulty::Medium,
+                    };
+
+                    let mut game = GameState::new(puzzle_grid, answer, difficulty);
+                    // Assign next available ID
+                    game.id = Some(crate::save::next_available_id());
+                    let _ = crate::save::save_game(&game);
+                    *app = App::start_game(game);
+                } else {
+                    let lang = Lang::from_code(&app.settings.language);
+                    app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));
+                    app.screen = AppScreen::Menu;
+                }
+            }
+            KeyCode::Esc => {
+                app.import_buffer.clear();
+                app.screen = AppScreen::Menu;
+            }
+            KeyCode::Char(c) => {
+                app.import_buffer.push(c);
+            }
+            KeyCode::Backspace => {
+                app.import_buffer.pop();
+            }
+            _ => {}
+        }
+    }
+    // Handle paste from mouse event
+    if let Event::Mouse(mouse) = event {
+        // Most terminals handle paste via key events, so we skip here
+        let _ = mouse;
+    }
+    EventResult::Continue
 }
 
 fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
@@ -52,6 +144,15 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                         app.screen = AppScreen::Settings;
                         EventResult::Continue
                     }
+                    MenuItem::Export => {
+                        app.screen = AppScreen::ExportSelect;
+                        EventResult::Continue
+                    }
+                    MenuItem::Import => {
+                        app.import_buffer.clear();
+                        app.screen = AppScreen::ImportInput;
+                        EventResult::Continue
+                    }
                 };
             }
             KeyCode::Char('d') | KeyCode::Char('D') => {
@@ -74,6 +175,15 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                         MenuItem::Continue(r) => EventResult::StartGame(crate::continue_game(&r)),
                         MenuItem::Settings => {
                             app.screen = AppScreen::Settings;
+                            EventResult::Continue
+                        }
+                        MenuItem::Export => {
+                            app.screen = AppScreen::ExportSelect;
+                            EventResult::Continue
+                        }
+                        MenuItem::Import => {
+                            app.import_buffer.clear();
+                            app.screen = AppScreen::ImportInput;
                             EventResult::Continue
                         }
                     };
@@ -212,7 +322,9 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             let coord = current_coord(app);
             app.game.set_value(coord, Some(value));
             if app.game.check_completion() {
-                app.set_message("恭喜完成！按 N 开始新局，Q 退出。", Duration::from_secs(5));
+                app.screen = AppScreen::Victory;
+                app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
+                return EventResult::Continue;
             }
         }
         KeyCode::Char('w') | KeyCode::Char('W') if shift_or_none => {
