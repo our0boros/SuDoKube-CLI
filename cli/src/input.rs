@@ -92,7 +92,10 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
                     // Assign next available ID
                     game.id = Some(crate::save::next_available_id());
                     let _ = crate::save::save_game(&game);
-                    *app = App::start_game(game);
+                    // Return to menu so the imported game appears in the list
+                    let lang = Lang::from_code(&app.settings.language);
+                    *app = App::new_menu();
+                    app.set_message(i18n::t("import.success", lang), Duration::from_secs(2));
                 } else {
                     let lang = Lang::from_code(&app.settings.language);
                     app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));

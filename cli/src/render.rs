@@ -251,16 +251,14 @@ fn draw_menu(f: &mut Frame, app: &App) {
         }
     }
 
-    // 提示文字
+    // 提示文字 - 固定在屏幕底部
     let hint = i18n::t("menu.hint_nav", lang);
     let hint_col = area.x + area.width.saturating_sub(hint.chars().count() as u16) / 2;
-    let hint_row = box_y + 2 + items_len + 1;
-    if hint_row < area.bottom() {
-        f.render_widget(
-            Paragraph::new(hint).style(Style::default().fg(Color::White)),
-            Rect::new(hint_col, hint_row, hint.chars().count() as u16, 1),
-        );
-    }
+    let hint_row = area.bottom().saturating_sub(1);
+    f.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(Color::White)),
+        Rect::new(hint_col, hint_row, hint.chars().count() as u16, 1),
+    );
 }
 
 fn draw_menu_box(f: &mut Frame, x: u16, y: u16, w: u16, items: &[String], selected: usize, area: Rect) {
