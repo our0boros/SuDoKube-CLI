@@ -252,13 +252,26 @@ fn draw_menu(f: &mut Frame, app: &App) {
     }
 
     // 提示文字 - 固定在屏幕底部
-    let hint = i18n::t("menu.hint_nav", lang);
-    let hint_col = area.x + area.width.saturating_sub(hint.chars().count() as u16) / 2;
     let hint_row = area.bottom().saturating_sub(1);
-    f.render_widget(
-        Paragraph::new(hint).style(Style::default().fg(Color::White)),
-        Rect::new(hint_col, hint_row, hint.chars().count() as u16, 1),
-    );
+    if !app.message.is_empty() {
+        // Show message if present
+        let msg_chars = app.message.chars().count() as u16;
+        let msg_w = msg_chars.min(area.width);
+        let msg_col = area.x + area.width.saturating_sub(msg_chars) / 2;
+        f.render_widget(
+            Paragraph::new(app.message.as_str()).style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Rect::new(msg_col, hint_row, msg_w, 1),
+        );
+    } else {
+        let hint = i18n::t("menu.hint_nav", lang);
+        let hint_chars = hint.chars().count() as u16;
+        let hint_w = hint_chars.min(area.width);
+        let hint_col = area.x + area.width.saturating_sub(hint_chars) / 2;
+        f.render_widget(
+            Paragraph::new(hint).style(Style::default().fg(Color::White)),
+            Rect::new(hint_col, hint_row, hint_w, 1),
+        );
+    }
 }
 
 fn draw_menu_box(f: &mut Frame, x: u16, y: u16, w: u16, items: &[String], selected: usize, area: Rect) {
@@ -367,7 +380,7 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
     let btn_y = msg_y + msg_h + gap;
 
     // 网格靠左，右侧留给立方体
-    let left_margin = 2u16;
+    let left_margin = 4u16; // space for direction border + outer frame + gap
     let grid_x = area.x + left_margin + 1; // +1 for outer border left
 
     // 信息栏宽度和位置
@@ -569,6 +582,73 @@ fn draw_sudoku_grid(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bo
     // 底部分隔行
     let bot_y = oy + 9 * (ch as u16 + 1);
     draw_separator(f, ox, bot_y, cw, false, true, true, layout.grid_area, border);
+
+    // ── Direction indicator borders ──
+    // Draw 4 colored edges outside the outer frame to show which face is in each direction
+    let outer_x = ox.saturating_sub(1); // left edge of outer frame
+    let outer_y = oy.saturating_sub(1); // top edge of outer frame
+    let outer_w = grid_w + 2;           // total outer width
+    let outer_h = grid_h + 2;           // total outer height
+
+    // Compute neighbor faces based on current face
+    let (up_face, down_face, left_face, right_face, back_face) = neighbor_faces(app.current_face);
+    let up_color = face_to_color(up_face);
+    let down_color = face_to_color(down_face);
+    let left_color = face_to_color(left_face);
+    let right_color = face_to_color(right_face);
+    let back_color = face_to_color(back_face);
+
+    // Top direction border
+    if outer_y > 0 {
+        let dir_y = outer_y.saturating_sub(1);
+        let top_line = "▔".repeat(outer_w as usize);
+        f.render_widget(
+            Paragraph::new(top_line).style(Style::default().fg(up_color)),
+            Rect::new(outer_x, dir_y, outer_w, 1),
+        );
+    }
+
+    // Bottom direction border
+    {
+        let dir_y = outer_y + outer_h;
+        let bot_line = "▁".repeat(outer_w as usize);
+        f.render_widget(
+            Paragraph::new(bot_line).style(Style::default().fg(down_color)),
+            Rect::new(outer_x, dir_y, outer_w, 1),
+        );
+    }
+
+    // Left direction border
+    if outer_x > 0 {
+        let dir_x = outer_x.saturating_sub(1);
+        for row in 0..outer_h {
+            f.render_widget(
+                Paragraph::new("▏").style(Style::default().fg(left_color)),
+                Rect::new(dir_x, outer_y + row, 1, 1),
+            );
+        }
+    }
+
+    // Right direction border
+    {
+        let dir_x = outer_x + outer_w;
+        for row in 0..outer_h {
+            f.render_widget(
+                Paragraph::new("▕").style(Style::default().fg(right_color)),
+                Rect::new(dir_x, outer_y + row, 1, 1),
+            );
+        }
+    }
+
+    // ── Back-face indicator: solid block at bottom-right corner ──
+    {
+        let indicator_x = outer_x + outer_w + 1;
+        let indicator_y = outer_y + outer_h;
+        f.render_widget(
+            Paragraph::new("■").style(Style::default().fg(back_color)),
+            Rect::new(indicator_x, indicator_y, 1, 1),
+        );
+    }
 }
 
 fn draw_separator(
@@ -1008,6 +1088,18 @@ fn face_to_color(face: Face) -> Color {
         Face::Right => Color::Yellow,
         Face::Top => Color::Magenta,
         Face::Bottom => Color::Cyan,
+    }
+}
+
+/// Returns (up, down, left, right, back) neighbor faces for the given face.
+fn neighbor_faces(face: Face) -> (Face, Face, Face, Face, Face) {
+    match face {
+        Face::Front  => (Face::Top, Face::Bottom, Face::Left, Face::Right, Face::Back),
+        Face::Back   => (Face::Top, Face::Bottom, Face::Right, Face::Left, Face::Front),
+        Face::Top    => (Face::Back, Face::Front, Face::Left, Face::Right, Face::Bottom),
+        Face::Bottom => (Face::Front, Face::Back, Face::Left, Face::Right, Face::Top),
+        Face::Left   => (Face::Top, Face::Bottom, Face::Back, Face::Front, Face::Right),
+        Face::Right  => (Face::Top, Face::Bottom, Face::Front, Face::Back, Face::Left),
     }
 }
 

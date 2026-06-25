@@ -115,10 +115,9 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
             _ => {}
         }
     }
-    // Handle paste from mouse event
-    if let Event::Mouse(mouse) = event {
-        // Most terminals handle paste via key events, so we skip here
-        let _ = mouse;
+    // Handle paste event from terminal (Ctrl+V, right-click paste, etc.)
+    if let Event::Paste(s) = event {
+        app.import_buffer.push_str(&s);
     }
     EventResult::Continue
 }

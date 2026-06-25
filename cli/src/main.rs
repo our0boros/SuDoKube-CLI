@@ -292,8 +292,8 @@ impl SettingsState {
         let guide_colors = vec!["green".into(), "blue".into(), "magenta".into(), "red".into()];
         let cube_scales = vec!["0.3".into(), "0.35".into(), "0.38".into(), "0.4".into(), "0.45".into(), "0.5".into()];
         let yes_no = vec!["yes".into(), "no".into()];
-        let cube_widths = vec!["16".into(), "18".into(), "20".into(), "22".into(), "24".into()];
-        let cube_heights = vec!["14".into(), "16".into(), "18".into(), "20".into(), "22".into()];
+        let cube_widths = vec!["16".into(), "18".into(), "20".into(), "22".into(), "24".into(), "26".into(), "28".into(), "30".into()];
+        let cube_heights = vec!["14".into(), "16".into(), "18".into(), "20".into(), "22".into(), "24".into(), "26".into(), "28".into(), "30".into()];
         let debug_modes = vec!["off".into(), "on".into()];
         let languages = vec!["zh".into(), "en".into(), "ja".into()];
         let naming_modes = vec!["vivid".into(), "numeric".into()];
