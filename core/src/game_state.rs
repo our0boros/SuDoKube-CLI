@@ -1,12 +1,8 @@
 use crate::cube::{CubeCoord, CubeGrid, Difficulty};
 use std::collections::HashMap;
 
-#[cfg(feature = "bevy")]
-use bevy::prelude::Resource;
-
 /// 当前对局状态。
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "bevy", derive(Resource))]
 pub struct GameState {
     pub grid: CubeGrid,
     pub solution: HashMap<CubeCoord, u8>,
@@ -19,6 +15,7 @@ pub struct GameState {
     pub history: Vec<MoveRecord>,
     pub history_index: usize,
     pub auto_next: bool,
+    pub id: Option<i64>,
 }
 
 impl GameState {
@@ -35,6 +32,7 @@ impl GameState {
             history: Vec::new(),
             history_index: 0,
             auto_next: false,
+            id: None,
         }
     }
 

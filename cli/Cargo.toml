@@ -7,3 +7,5 @@ edition = "2024"
 sudokube-core = { path = "../core" }
 rand = "0.8"
 crossterm = "0.28"
+chrono = "0.4"
+rusqlite = { version = "0.34", features = ["bundled"] }
