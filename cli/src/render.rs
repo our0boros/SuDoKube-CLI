@@ -1264,8 +1264,10 @@ fn draw_import_input(f: &mut Frame, app: &App) {
         i18n::t("import.paste", lang).to_string()
     } else {
         let buf = &app.import_buffer;
-        if buf.len() > inner_w - 4 {
-            format!("{}...", &buf[buf.len() - inner_w + 7..])
+        let max_chars = inner_w.saturating_sub(6); // reserve for " ..." and padding
+        if buf.chars().count() > max_chars {
+            let truncated: String = buf.chars().skip(buf.chars().count().saturating_sub(max_chars)).collect();
+            format!("...{}", truncated)
         } else {
             buf.clone()
         }

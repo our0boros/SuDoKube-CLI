@@ -320,10 +320,14 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         }
         KeyCode::Char('h') | KeyCode::Char('H') => {
             app.game.hint();
-            app.set_message("已提示", Duration::from_secs(2));
             if app.game.check_completion() {
-                app.set_message("恭喜完成！按 N 开始新局，Q 退出。", Duration::from_secs(5));
+                app.game.completed = true;
+                app.screen = AppScreen::Victory;
+                app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
+                let _ = crate::save::save_game(&app.game);
+                return EventResult::Continue;
             }
+            app.set_message("已提示", Duration::from_secs(2));
         }
         KeyCode::Char('z') | KeyCode::Char('Z') => {
             app.game.undo();
@@ -338,8 +342,10 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             let coord = current_coord(app);
             app.game.set_value(coord, Some(value));
             if app.game.check_completion() {
+                app.game.completed = true;
                 app.screen = AppScreen::Victory;
                 app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
+                let _ = crate::save::save_game(&app.game);
                 return EventResult::Continue;
             }
         }
@@ -441,7 +447,11 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
             let coord = current_coord(app);
             app.game.set_value(coord, Some(n));
             if app.game.check_completion() {
-                app.set_message("恭喜完成！按 N 开始新局，Q 退出。", Duration::from_secs(5));
+                app.game.completed = true;
+                app.screen = AppScreen::Victory;
+                app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
+                let _ = crate::save::save_game(&app.game);
+                return EventResult::Continue;
             }
         }
         ButtonId::Erase => {
@@ -610,6 +620,13 @@ fn debug_hint_face(app: &mut App) {
                 }
             }
         }
+    }
+    if app.game.check_completion() {
+        app.game.completed = true;
+        app.screen = AppScreen::Victory;
+        app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
+        let _ = crate::save::save_game(&app.game);
+        return;
     }
     let lang = Lang::from_code(&app.settings.language);
     app.set_message(

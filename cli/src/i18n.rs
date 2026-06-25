@@ -42,7 +42,7 @@ tr_map! {
     "menu.completed" => { zh: "已完成", en: "Done", ja: "完了" },
     "menu.victory" => { zh: "已胜利", en: "Victory", ja: "勝利" },
     "menu.in_progress" => { zh: "进行中", en: "Playing", ja: "プレイ中" },
-    "menu.hint_nav" => { zh: "↑/↓ 选择  Enter 确认  D 删除  E 导出  I 导入  Q 退出", en: "↑/↓ Select  Enter OK  D Delete  E Export  I Import  Q Quit", ja: "↑/↓ 選択  Enter 決定  D 削除  E ｴｸｽﾎﾟｰﾄ  I ｲﾝﾎﾟｰﾄ  Q 終了" },
+    "menu.hint_nav" => { zh: "↑↓选择 Enter确认 D删除 E导出 I导入 Q退出", en: "↑↓ Select Enter OK D Del E Exp I Imp Q Quit", ja: "↑↓ 選択 Enter決定 D削除 E出力 I入力 Q終了" },
     "menu.export_all" => { zh: "导出全部", en: "Export All", ja: "全ｴｸｽﾎﾟｰﾄ" },
     "menu.import_all" => { zh: "导入全部", en: "Import All", ja: "全ｲﾝﾎﾟｰﾄ" },
     "menu.sidebar_title" => { zh: "胜利记录", en: "Victories", ja: "勝利記録" },
