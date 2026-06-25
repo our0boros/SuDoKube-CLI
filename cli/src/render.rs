@@ -366,17 +366,19 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
     // 按钮栏高度 3 行
     let btn_h = 3u16;
     let gap = 1u16;
+    // Direction indicator borders add 2 rows (top + bottom)
+    let dir_border_h = 2u16;
 
     // 右侧立方体宽度
     let _cube_w = 20u16;
 
-    let total_h = info_h + gap + grid_h + gap + msg_h + gap + btn_h;
+    let total_h = info_h + gap + grid_h + dir_border_h + gap + msg_h + gap + btn_h;
 
     let vert_offset = area.height.saturating_sub(total_h) / 2;
 
     let info_y = area.y + vert_offset;
-    let grid_y = info_y + info_h + gap;
-    let msg_y = grid_y + grid_h + gap;
+    let grid_y = info_y + info_h + gap + 1; // +1 for top direction border
+    let msg_y = grid_y + grid_h + 1 + gap; // +1 for bottom direction border
     let btn_y = msg_y + msg_h + gap;
 
     // 网格靠左，右侧留给立方体
@@ -415,11 +417,11 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
     let msg_area = Rect::new(grid_x, msg_y, grid_inner_w, msg_h);
     let btn_area = Rect::new(area.x, btn_y, area.width, btn_h);
 
-    // 3D立方体区域 - 网格右侧
+    // 3D立方体区域 - 网格右侧，留出方向边框空间
     let cube_w: u16 = app.settings.cube_width.parse().unwrap_or(20);
     let cube_h: u16 = app.settings.cube_height.parse().unwrap_or(18);
-    let cube_x = grid_x + grid_inner_w + 4; // 网格外边框+间距
-    let cube_area = Rect::new(cube_x, grid_y, cube_w, cube_h);
+    let cube_x = grid_x + grid_inner_w + 5; // 网格外边框+方向边+间距
+    let cube_area = Rect::new(cube_x, grid_y + 1, cube_w, cube_h); // +1 for top direction border
 
     // 按钮布局 - 计算居中后的起始列
     let btn_row = btn_y + 1; // 框内内容行
@@ -590,8 +592,8 @@ fn draw_sudoku_grid(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bo
     let outer_w = grid_w + 2;           // total outer width
     let outer_h = grid_h + 2;           // total outer height
 
-    // Compute neighbor faces based on current face
-    let (up_face, down_face, left_face, right_face, back_face) = neighbor_faces(app.current_face);
+    // Compute neighbor faces based on current face (WASD edge-crossing)
+    let (up_face, down_face, left_face, right_face, back_face) = wasd_neighbor_faces(app.current_face);
     let up_color = face_to_color(up_face);
     let down_color = face_to_color(down_face);
     let left_color = face_to_color(left_face);
@@ -838,6 +840,43 @@ fn draw_button_bar(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bor
 fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
     let area = layout.cube_area;
     if area.width < 10 || area.height < 10 { return; }
+
+    // ── Arrow-key direction indicator border (outer) ──
+    let (up_face, down_face, left_face, right_face, _back_face) = arrow_neighbor_faces(app.current_face);
+    let up_color = face_to_color(up_face);
+    let down_color = face_to_color(down_face);
+    let left_color = face_to_color(left_face);
+    let right_color = face_to_color(right_face);
+
+    if area.x > 0 && area.y > 0 {
+        // Top arrow border
+        let top_line = "▔".repeat(area.width as usize);
+        f.render_widget(
+            Paragraph::new(top_line).style(Style::default().fg(up_color)),
+            Rect::new(area.x, area.y.saturating_sub(1), area.width, 1),
+        );
+        // Bottom arrow border
+        let bot_line = "▁".repeat(area.width as usize);
+        f.render_widget(
+            Paragraph::new(bot_line).style(Style::default().fg(down_color)),
+            Rect::new(area.x, area.y + area.height, area.width, 1),
+        );
+        // Left arrow border
+        let dir_x = area.x.saturating_sub(1);
+        for row in 0..area.height {
+            f.render_widget(
+                Paragraph::new("▏").style(Style::default().fg(left_color)),
+                Rect::new(dir_x, area.y + row, 1, 1),
+            );
+        }
+        // Right arrow border
+        for row in 0..area.height {
+            f.render_widget(
+                Paragraph::new("▕").style(Style::default().fg(right_color)),
+                Rect::new(area.x + area.width, area.y + row, 1, 1),
+            );
+        }
+    }
 
     // 绘制边框
     let border_color = face_to_color(app.current_face);
@@ -1091,8 +1130,22 @@ fn face_to_color(face: Face) -> Color {
     }
 }
 
-/// Returns (up, down, left, right, back) neighbor faces for the given face.
-fn neighbor_faces(face: Face) -> (Face, Face, Face, Face, Face) {
+/// WASD edge-crossing neighbors: which face you reach when cursor moves off the edge.
+/// Based on move_on_surface logic in input.rs.
+fn wasd_neighbor_faces(face: Face) -> (Face, Face, Face, Face, Face) {
+    match face {
+        Face::Front  => (Face::Bottom, Face::Top, Face::Left, Face::Right, Face::Back),
+        Face::Back   => (Face::Left, Face::Right, Face::Bottom, Face::Top, Face::Front),
+        Face::Top    => (Face::Back, Face::Front, Face::Left, Face::Right, Face::Bottom),
+        Face::Bottom => (Face::Left, Face::Right, Face::Back, Face::Front, Face::Top),
+        Face::Left   => (Face::Bottom, Face::Top, Face::Back, Face::Front, Face::Right),
+        Face::Right  => (Face::Back, Face::Front, Face::Bottom, Face::Top, Face::Left),
+    }
+}
+
+/// Arrow-key face-switching neighbors: which face you switch to with ↑↓←→.
+/// Based on switch_face logic in input.rs.
+fn arrow_neighbor_faces(face: Face) -> (Face, Face, Face, Face, Face) {
     match face {
         Face::Front  => (Face::Top, Face::Bottom, Face::Left, Face::Right, Face::Back),
         Face::Back   => (Face::Top, Face::Bottom, Face::Right, Face::Left, Face::Front),
