@@ -11,6 +11,20 @@ use sudokube_core::cube::{CubeCoord, Face};
 
 use crate::{AppScreen, CliState, MenuItem};
 
+/// ASCII ART LOGO
+const LOGO: &[&str] = &[
+    " ██████  █    ██ ▓█████▄  ▒█████   ██ ▄█▀ █    ██  ▄▄▄▄   ▓█████   ",
+    " ▒██    ▒  ██  ▓██▒▒██▀ ██▌▒██▒  ██▒ ██▄█▒  ██  ▓██▒▓█████▄ ▓█   ▀ ",
+    " ░ ▓██▄   ▓██  ▒██░░██   █▌▒██░  ██▒▓███▄░ ▓██  ▒██░▒██▒ ▄██▒███   ",
+    "   ▒   ██▒▓▓█  ░██░░▓█▄   ▌▒██   ██░▓██ █▄ ▓▓█  ░██░▒██░█▀  ▒▓█  ▄ ",
+    " ▒██████▒▒▒▒█████▓ ░▒████▓ ░ ████▓▒░▒██▒ █▄▒▒█████▓ ░▓█  ▀█▓░▒████▒",
+    " ▒ ▒▓▒ ▒ ░░▒▓▒ ▒ ▒  ▒▒▓  ▒ ░ ▒░▒░▒░ ▒ ▒▒ ▓▒░▒▓▒ ▒ ▒ ░▒▓███▀▒░░ ▒░ ░",
+    " ░ ░▒  ░ ░░░▒░ ░ ░  ░ ▒  ▒   ░ ▒ ▒░ ░ ░▒ ▒░░░▒░ ░ ░ ▒░▒   ░  ░ ░  ░",
+    " ░  ░  ░   ░░░ ░ ░  ░ ░  ░ ░ ░ ░ ▒  ░ ░░ ░  ░░░ ░ ░  ░    ░    ░   ",
+    "       ░     ░        ░        ░ ░  ░  ░      ░      ░         ░  ░",
+    "                    ░                                     ░        ",
+];
+
 /// 渲染字符模式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderMode {
@@ -34,25 +48,25 @@ impl RenderMode {
                 cell_width: 5,
                 cell_height: 3,
                 sep: BoxChars {
-                    h_thin: '-',
-                    h_thick: '=',
-                    v_thin: '|',
-                    v_thick: '#',
-                    cross_thin_thin: '+',
-                    cross_thin_thick: '#',
-                    cross_thick_thin: '#',
-                    cross_thick_thick: '#',
-                    top_thin: '-',
-                    top_thick: '=',
-                    bot_thin: '-',
-                    bot_thick: '=',
+                    h_thin: '─',
+                    h_thick: '═',
+                    v_thin: '│',
+                    v_thick: '║',
+                    cross_thin_thin: '┼',
+                    cross_thin_thick: '╫',
+                    cross_thick_thin: '╪',
+                    cross_thick_thick: '╬',
+                    top_thin: '╤',
+                    top_thick: '╦',
+                    bot_thin: '╧',
+                    bot_thick: '╩',
                 },
-                top_left: ',',
-                top_right: '.',
-                mid_left: '|',
-                mid_right: '|',
-                bot_left: '`',
-                bot_right: '\'',
+                top_left: '╔',
+                top_right: '╗',
+                mid_left: '╟',
+                mid_right: '╢',
+                bot_left: '╚',
+                bot_right: '╝',
             },
             RenderMode::Monospace => Metrics {
                 cell_width: 3,
@@ -158,6 +172,8 @@ impl Theme {
                 button_hover_fg: Color::Black,
                 header: Color::Cyan,
                 message: Color::Green,
+                guidance_group: Color::DarkGreen,
+                guidance_same: Color::DarkBlue,
             },
             Theme::Light => ThemeColors {
                 bg: Color::White,
@@ -173,6 +189,8 @@ impl Theme {
                 button_hover_fg: Color::White,
                 header: Color::DarkCyan,
                 message: Color::DarkGreen,
+                guidance_group: Color::DarkGreen,
+                guidance_same: Color::DarkBlue,
             },
         }
     }
@@ -192,6 +210,8 @@ struct ThemeColors {
     button_hover_fg: Color,
     header: Color,
     message: Color,
+    guidance_group: Color,
+    guidance_same: Color,
 }
 
 /// 屏幕布局计算结果。
@@ -220,7 +240,6 @@ pub enum ButtonId {
     Hint,
     Undo,
     ToggleGuidance,
-    NewGame,
     ToggleMode,
     ToggleTheme,
     Quit,
@@ -251,13 +270,17 @@ pub fn render(stdout: &mut io::Stdout, state: &mut CliState) -> io::Result<()> {
     let timer_text = format_timer(state);
     let grid_hash = compute_grid_hash(state);
 
+    // Guidance 模式下，光标移动时需要刷新整个网格（同行列宫高亮变化）。
+    let guidance_changed = state.guidance && state.cursor != state.prev_cursor;
+
     let need_full = state.dirty
         && (state.screen != state.prev_screen
             || state.render_mode != state.prev_render_mode
             || state.theme != state.prev_theme
             || state.current_face != state.prev_face
             || grid_hash != state.prev_grid_hash
-            || term_size != state.prev_term_size);
+            || term_size != state.prev_term_size
+            || guidance_changed);
 
     if need_full {
         stdout.queue(Clear(ClearType::All))?;
@@ -296,7 +319,7 @@ fn compute_layout(term_size: (u16, u16), metrics: &Metrics, state: &CliState) ->
     let info_height = 1;
     let message_height = if state.screen == AppScreen::Game { 1 } else { 0 };
     let button_height = 1;
-    let total_h = grid_h + info_height + message_height + button_height + 2; // 间距
+    let total_h = grid_h + info_height + message_height + button_height + 2;
 
     let too_small = term_cols < grid_w + 4 || term_rows < total_h;
 
@@ -327,7 +350,6 @@ fn compute_layout(term_size: (u16, u16), metrics: &Metrics, state: &CliState) ->
             ("[H]int", ButtonId::Hint),
             ("[Z]undo", ButtonId::Undo),
             ("[G]uide", ButtonId::ToggleGuidance),
-            ("[N]ew", ButtonId::NewGame),
             ("[M]ode", ButtonId::ToggleMode),
             ("[Y]theme", ButtonId::ToggleTheme),
             ("[Q]menu", ButtonId::Quit),
@@ -405,7 +427,6 @@ fn render_screen_partial(
             }
 
             if grid_hash != state.prev_grid_hash {
-                // 数值变化时只重绘当前格；冲突高亮变化较小，若需要可扩展为全屏。
                 render_cell(stdout, state, layout, metrics, state.cursor.0, state.cursor.1)?;
             }
 
@@ -426,16 +447,39 @@ fn render_menu_full(
     layout: &Layout,
 ) -> io::Result<()> {
     let colors = state.theme.colors();
-    let title = "SuDoKube CLI";
-    let col = (layout.term_cols.saturating_sub(title.chars().count() as u16)) / 2;
-    let mut row = layout.term_rows / 4;
 
-    stdout.queue(MoveTo(col, row))?;
+    // 绘制 LOGO
+    let logo_width = LOGO.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
+    let mut row = std::cmp::max(layout.term_rows / 2 - 8 - state.menu.items.len() as u16 / 2, 1);
+    for line in LOGO {
+        let col = (layout.term_cols.saturating_sub(logo_width)) / 2;
+        stdout.queue(MoveTo(col, row))?;
+        stdout.queue(SetForegroundColor(colors.header))?;
+        stdout.queue(SetAttribute(Attribute::Bold))?;
+        stdout.queue(Print(*line))?;
+        stdout.queue(ResetColor)?;
+        row += 1;
+    }
+    row += 1;
+
+    // 绘制菜单框
+    let max_item_len = state.menu.items.iter().map(|item| match item {
+        MenuItem::NewGame(d) => format!("  新游戏 - {}  ", d.as_str()).len(),
+        MenuItem::Continue(r) => format!("  继续 #{} | {} | {:02}:{:02} | {}  ",
+            r.id, r.difficulty, r.elapsed_seconds / 60, r.elapsed_seconds % 60,
+            if r.completed { "已完成" } else { "进行中" }).len(),
+    }).max().unwrap_or(20);
+    let box_w = max_item_len as u16 + 4;
+    let box_h = state.menu.items.len() as u16 + 2;
+    let box_col = (layout.term_cols.saturating_sub(box_w)) / 2;
+    let box_row = row;
+
+    // 画框 ╭─╮
+    stdout.queue(MoveTo(box_col, box_row))?;
     stdout.queue(SetForegroundColor(colors.header))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(title))?;
-    stdout.queue(ResetColor)?;
-    row += 2;
+    stdout.queue(Print("╭"))?;
+    stdout.queue(Print("─".repeat((box_w - 2) as usize)))?;
+    stdout.queue(Print("╮"))?;
 
     for (i, item) in state.menu.items.iter().enumerate() {
         let label = match item {
@@ -449,25 +493,42 @@ fn render_menu_full(
                 if r.completed { "已完成" } else { "进行中" }
             ),
         };
-        let prefix = if i == state.menu.selected { "> " } else { "  " };
+        let prefix = if i == state.menu.selected { "▸ " } else { "  " };
         let line = format!("{}{}", prefix, label);
-        let col = (layout.term_cols.saturating_sub(line.chars().count() as u16)) / 2;
-        stdout.queue(MoveTo(col, row + i as u16))?;
+        let inner_w = box_w as usize - 4;
+        let padded = format!(" {:width$} ", line, width = inner_w - 2);
+        stdout.queue(MoveTo(box_col, box_row + 1 + i as u16))?;
+        stdout.queue(SetForegroundColor(colors.header))?;
+        stdout.queue(Print("│"))?;
         if i == state.menu.selected {
             stdout.queue(SetBackgroundColor(colors.selected_bg))?;
             stdout.queue(SetForegroundColor(colors.selected_fg))?;
+        } else {
+            stdout.queue(SetBackgroundColor(colors.bg))?;
+            stdout.queue(SetForegroundColor(colors.fg))?;
         }
-        stdout.queue(Print(line))?;
+        stdout.queue(Print(&padded))?;
         stdout.queue(ResetColor)?;
+        stdout.queue(SetForegroundColor(colors.header))?;
+        stdout.queue(Print("│"))?;
     }
 
-    row += state.menu.items.len() as u16 + 2;
-    let hint = "↑/↓ 选择，Enter 确认，D 删除记录，Q 退出";
-    let col = (layout.term_cols.saturating_sub(hint.chars().count() as u16)) / 2;
-    stdout.queue(MoveTo(col, row))?;
+    // 画框 ╰─╯
+    stdout.queue(MoveTo(box_col, box_row + 1 + state.menu.items.len() as u16))?;
+    stdout.queue(SetForegroundColor(colors.header))?;
+    stdout.queue(Print("╰"))?;
+    stdout.queue(Print("─".repeat((box_w - 2) as usize)))?;
+    stdout.queue(Print("╯"))?;
+
+    // 提示
+    let hint_row = box_row + box_h + 1;
+    let hint = "↑/↓ 选择  Enter 确认  D 删除  Q 退出";
+    let hint_col = (layout.term_cols.saturating_sub(hint.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(hint_col, hint_row))?;
     stdout.queue(SetForegroundColor(colors.fg))?;
     stdout.queue(Print(hint))?;
     stdout.queue(ResetColor)?;
+
     stdout.flush()?;
     Ok(())
 }
@@ -479,18 +540,34 @@ fn render_info_line(
     timer_text: &str,
 ) -> io::Result<()> {
     let colors = state.theme.colors();
-    stdout.queue(MoveTo(0, layout.info_row))?;
-    stdout.queue(SetForegroundColor(colors.header))?;
-    stdout.queue(Print("SuDoKube CLI"))?;
-    stdout.queue(ResetColor)?;
-    stdout.queue(Print(format!(
-        " | [{}] 面: {} | 难度: {} | 时间: {} | 滚轮切换面，Alt+滚轮横向",
+    let info_text = format!(
+        " ╢ [{}] 面:{} 难度:{} 时间:{} Alt+滚轮横向 ╟",
         mode_label(state.render_mode),
         face_name(state.current_face),
         state.game.difficulty.as_str(),
         timer_text
-    )))?;
-    stdout.queue(Clear(ClearType::UntilNewLine))?;
+    );
+    // 画框顶行
+    let grid_w = state.render_mode.metrics().grid_width();
+    let start_col = layout.grid_offset.0;
+    stdout.queue(MoveTo(start_col, layout.info_row))?;
+    stdout.queue(SetForegroundColor(colors.header))?;
+    stdout.queue(Print("╭"))?;
+    stdout.queue(Print("─".repeat((grid_w - 2) as usize)))?;
+    stdout.queue(Print("╮"))?;
+    stdout.queue(MoveTo(start_col, layout.info_row + 1))?;
+    stdout.queue(Print("│"))?;
+    stdout.queue(ResetColor)?;
+    stdout.queue(Print(&info_text))?;
+    // 填充到右框线位置
+    let text_end = start_col as usize + 1 + info_text.chars().count();
+    let right_pos = start_col as usize + grid_w as usize - 1;
+    if text_end < right_pos {
+        stdout.queue(Print(" ".repeat(right_pos - text_end)))?;
+    }
+    stdout.queue(SetForegroundColor(colors.header))?;
+    stdout.queue(Print("│"))?;
+    stdout.queue(ResetColor)?;
     Ok(())
 }
 
@@ -528,7 +605,6 @@ fn render_buttons(
         stdout.queue(Print(&btn.label))?;
         stdout.queue(ResetColor)?;
     }
-    // 清除按钮行右侧残留。
     if let Some(last) = layout.buttons.last() {
         let end_col = last.col + last.width;
         stdout.queue(MoveTo(end_col, last.row))?;
@@ -671,6 +747,7 @@ fn print_cell_content(
     let selected = state.cursor == (u, v);
     let is_given = cell.map(|c| c.given).unwrap_or(false);
     let value = cell.and_then(|c| c.user_value);
+    let is_error = value.map_or(false, |n| is_conflicting(state, coord, n));
 
     // Guidance 模式：判断当前格是否与选中格同行/列/宫，或有相同数字。
     let (in_same_group, has_same_number) = if state.guidance && !selected {
@@ -692,26 +769,19 @@ fn print_cell_content(
     let mut content: String = " ".repeat(metrics.cell_width as usize);
     if line == mid_line {
         if let Some(n) = value {
-            let s: String = if has_same_number && !is_given {
-                const CIRCLED: [&str; 9] = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨"];
-                CIRCLED[(n - 1) as usize].to_string()
-            } else {
-                ((b'0' + n) as char).to_string()
-            };
-            // 居中放置字符。
-            let display_width = if has_same_number && !is_given { 2 } else { 1 };
+            let s = ((b'0' + n) as char).to_string();
             let padding = metrics.cell_width as usize;
-            let start = if padding > display_width {
-                (padding - display_width) / 2
-            } else {
-                0
-            };
-            content = " ".repeat(padding);
-            content.replace_range(start..start + s.len(), &s);
+            let start = (padding - 1) / 2;
+            content.replace_range(start..start + 1, &s);
         }
     }
 
-    if selected && state.blink_on {
+    // 选中格且内容冲突时：红色字体，停止闪烁（始终显示数字）
+    if selected && is_error {
+        stdout
+            .queue(SetBackgroundColor(colors.selected_bg))?
+            .queue(SetForegroundColor(colors.error))?;
+    } else if selected && state.blink_on {
         stdout
             .queue(SetBackgroundColor(colors.selected_bg))?
             .queue(SetForegroundColor(colors.selected_fg))?;
@@ -720,23 +790,27 @@ fn print_cell_content(
             .queue(SetBackgroundColor(Color::Grey))?
             .queue(SetForegroundColor(Color::White))?;
     } else if in_same_group && has_same_number {
+        // 同行列宫 + 同数字：蓝色背景
         stdout
-            .queue(SetBackgroundColor(Color::DarkGreen))?
+            .queue(SetBackgroundColor(colors.guidance_same))?
             .queue(SetForegroundColor(Color::White))?;
     } else if in_same_group {
+        // 同行列宫：绿色背景
         stdout
-            .queue(SetBackgroundColor(Color::DarkGreen))?
+            .queue(SetBackgroundColor(colors.guidance_group))?
             .queue(SetForegroundColor(colors.fg))?;
     } else if has_same_number {
+        // 仅同数字：蓝色背景
         stdout
-            .queue(SetBackgroundColor(Color::DarkCyan))?
+            .queue(SetBackgroundColor(colors.guidance_same))?
             .queue(SetForegroundColor(Color::White))?;
+    } else if is_error {
+        // 非选中格冲突：红色字体
+        stdout.queue(SetForegroundColor(colors.error))?;
     } else if is_given {
         stdout
             .queue(SetAttribute(Attribute::Bold))?
             .queue(SetForegroundColor(colors.given))?;
-    } else if value.map_or(false, |n| is_conflicting(state, coord, n)) {
-        stdout.queue(SetForegroundColor(colors.error))?;
     } else if value.is_some() {
         stdout.queue(SetForegroundColor(colors.user))?;
     } else {
@@ -749,16 +823,11 @@ fn print_cell_content(
 }
 
 fn grid_separator_row(layout: &Layout, v: u8) -> u16 {
-    layout.grid_offset.1 + v as u16 * (layout_render_cell_height(layout) + 1)
+    layout.grid_offset.1 + v as u16 * (3 + 1)
 }
 
 fn grid_cell_row(layout: &Layout, v: u8, line: u16) -> u16 {
-    layout.grid_offset.1 + 1 + v as u16 * (layout_render_cell_height(layout) + 1) + line
-}
-
-fn layout_render_cell_height(_layout: &Layout) -> u16 {
-    // 布局计算时 cell_height 固定为 3，但可通过 metrics 获取；这里保持与 compute_layout 一致。
-    3
+    layout.grid_offset.1 + 1 + v as u16 * (3 + 1) + line
 }
 
 fn compute_grid_hash(state: &CliState) -> u64 {
@@ -802,12 +871,12 @@ fn is_conflicting(state: &CliState, coord: CubeCoord, value: u8) -> bool {
 
 fn face_name(face: Face) -> &'static str {
     match face {
-        Face::Front => "F 前",
-        Face::Back => "B 后",
-        Face::Left => "L 左",
-        Face::Right => "R 右",
-        Face::Top => "T 上",
-        Face::Bottom => "U 下",
+        Face::Front => "F前",
+        Face::Back => "B后",
+        Face::Left => "L左",
+        Face::Right => "R右",
+        Face::Top => "T上",
+        Face::Bottom => "U下",
     }
 }
 
@@ -831,7 +900,6 @@ pub fn cell_at(layout: &Layout, metrics: &Metrics, col: u16, row: u16) -> Option
     let gx = col.saturating_sub(layout.grid_offset.0);
     let gy = row.saturating_sub(layout.grid_offset.1);
 
-    // 检查是否在分隔线上。
     if gy % (metrics.cell_height + 1) == 0 {
         return None;
     }
@@ -840,7 +908,6 @@ pub fn cell_at(layout: &Layout, metrics: &Metrics, col: u16, row: u16) -> Option
         return None;
     }
 
-    // 检查是否在竖线上。
     if gx % (metrics.cell_width + 1) == 0 {
         return None;
     }

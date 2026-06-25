@@ -81,10 +81,11 @@ fn handle_menu_event(state: &mut CliState, event: Event) -> EventResult {
 }
 
 fn menu_item_at(state: &CliState, _col: u16, row: u16) -> Option<usize> {
-    // 菜单项渲染位置较复杂，简化处理：按固定估算行。
+    // LOGO 有5行，+1空行，+1框顶行，菜单项从 box_row+1 开始
     let term_rows = state.prev_term_size.1;
-    let start_row = term_rows / 4 + 2;
-    let idx = row.saturating_sub(start_row) as usize;
+    let items_len = state.menu.items.len() as u16;
+    let menu_start_row = std::cmp::max(term_rows / 2 - 8 - items_len / 2, 1) + 5 + 1 + 1;
+    let idx = row.saturating_sub(menu_start_row) as usize;
     if idx < state.menu.items.len() {
         Some(idx)
     } else {
@@ -118,10 +119,9 @@ fn handle_key(state: &mut CliState, key: KeyEvent) -> EventResult {
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => return EventResult::BackToMenu,
         KeyCode::Char('n') | KeyCode::Char('N') => {
-            state.game = new_game(state.game.difficulty);
-            state.current_face = Face::Front;
-            state.cursor = (4, 4);
-            state.dirty = true;
+            state.set_message("Generating...", Duration::from_secs(30));
+            // 先刷新显示 "Generating..." 消息
+            return EventResult::StartGame(new_game(state.game.difficulty));
         }
         KeyCode::Char('m') | KeyCode::Char('M') => {
             state.render_mode = state.render_mode.toggle();
@@ -295,12 +295,6 @@ fn execute_button(state: &mut CliState, btn: ButtonId) -> EventResult {
                 Duration::from_secs(2),
             );
         }
-        ButtonId::NewGame => {
-            state.game = new_game(state.game.difficulty);
-            state.current_face = Face::Front;
-            state.cursor = (4, 4);
-            state.dirty = true;
-        }
         ButtonId::ToggleMode => {
             state.render_mode = state.render_mode.toggle();
             state.set_message(
@@ -354,7 +348,8 @@ fn move_cursor_with_wrap(state: &mut CliState, dx: i8, dy: i8) {
     }
 }
 
-/// 根据当前面局部坐标和移动方向，返回新的面和光标位置（光标已位于相邻面内部一格）。
+/// 根据当前面局部坐标和移动方向，返回新的面和光标位置。
+/// 映射基于 to_cube 的几何关系推导，确保来回移动可逆。
 fn move_on_surface(face: Face, cursor: (u8, u8), dx: i8, dy: i8) -> (Face, (u8, u8)) {
     let (u, v) = (cursor.0 as i8, cursor.1 as i8);
     let nu = u + dx;
@@ -364,72 +359,79 @@ fn move_on_surface(face: Face, cursor: (u8, u8), dx: i8, dy: i8) -> (Face, (u8, 
         return (face, (nu as u8, nv as u8));
     }
 
-    // 出界时切换到相邻面。映射基于 to_cube 的几何关系推导，确保来回移动可逆。
+    // 出界时切换到相邻面，边界坐标精确映射到相邻面的第 0 行/列或第 8 行/列。
+    // 推导方式：当前面边界格 to_cube 得到 3D 坐标，再用相邻面 to_cube 反解局部 (u,v)。
     match face {
+        // Front: to_cube(u, v) = (x=u, y=v, z=8)
         Face::Front => {
             if nv < 0 {
-                (Face::Bottom, (7, u as u8))
+                (Face::Bottom, (8, u as u8))
             } else if nv > 8 {
-                (Face::Top, (u as u8, 7))
+                (Face::Top, (u as u8, 8))
             } else if nu < 0 {
-                (Face::Left, (7, v as u8))
+                (Face::Left, (8, v as u8))
             } else {
-                (Face::Right, (v as u8, 7))
+                (Face::Right, (v as u8, 8))
             }
         }
+        // Back: to_cube(u, v) = (x=v, y=u, z=0)
         Face::Back => {
             if nv < 0 {
-                (Face::Left, (1, u as u8))
+                (Face::Left, (0, u as u8))
             } else if nv > 8 {
-                (Face::Right, (u as u8, 1))
+                (Face::Right, (u as u8, 0))
             } else if nu < 0 {
-                (Face::Bottom, (1, v as u8))
+                (Face::Bottom, (v as u8, 0))
             } else {
-                (Face::Top, (v as u8, 1))
+                (Face::Top, (v as u8, 0))
             }
         }
+        // Top: to_cube(u, v) = (x=u, y=8, z=v)
         Face::Top => {
             if nv < 0 {
-                (Face::Back, (7, u as u8))
+                (Face::Back, (u as u8, 8))
             } else if nv > 8 {
-                (Face::Front, (u as u8, 7))
+                (Face::Front, (u as u8, 8))
             } else if nu < 0 {
-                (Face::Left, (v as u8, 7))
+                (Face::Left, (v as u8, 8))
             } else {
-                (Face::Right, (7, v as u8))
+                (Face::Right, (8, v as u8))
             }
         }
+        // Bottom: to_cube(u, v) = (x=v, y=0, z=u)
         Face::Bottom => {
             if nv < 0 {
-                (Face::Left, (u as u8, 1))
+                (Face::Left, (u as u8, 0))
             } else if nv > 8 {
-                (Face::Right, (1, u as u8))
+                (Face::Right, (0, u as u8))
             } else if nu < 0 {
-                (Face::Back, (1, v as u8))
+                (Face::Back, (v as u8, 0))
             } else {
-                (Face::Front, (v as u8, 1))
+                (Face::Front, (v as u8, 0))
             }
         }
+        // Left: to_cube(u, v) = (x=0, y=v, z=u)
         Face::Left => {
             if nv < 0 {
-                (Face::Bottom, (u as u8, 1))
+                (Face::Bottom, (u as u8, 0))
             } else if nv > 8 {
-                (Face::Top, (1, u as u8))
+                (Face::Top, (0, u as u8))
             } else if nu < 0 {
-                (Face::Back, (v as u8, 1))
+                (Face::Back, (0, v as u8))
             } else {
-                (Face::Front, (1, v as u8))
+                (Face::Front, (0, v as u8))
             }
         }
+        // Right: to_cube(u, v) = (x=8, y=u, z=v)
         Face::Right => {
             if nv < 0 {
-                (Face::Back, (u as u8, 7))
+                (Face::Back, (8, u as u8))
             } else if nv > 8 {
-                (Face::Front, (7, u as u8))
+                (Face::Front, (8, u as u8))
             } else if nu < 0 {
-                (Face::Bottom, (v as u8, 7))
+                (Face::Bottom, (v as u8, 8))
             } else {
-                (Face::Top, (7, v as u8))
+                (Face::Top, (8, v as u8))
             }
         }
     }
