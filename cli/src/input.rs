@@ -9,7 +9,7 @@ use sudokube_core::cube::{Difficulty, Face};
 use crate::{App, AppScreen, MenuItem, current_coord};
 use crate::render::{ButtonId, GameLayout, compute_game_layout_from_rect, find_button_at, cell_at, mode_label};
 use crate::save::delete_game;
-use crate::i18n::Lang;
+use crate::i18n::{self, Lang};
 
 pub enum EventResult {
     Continue,
@@ -462,4 +462,30 @@ fn switch_face(face: Face, dx: i8, dy: i8) -> Face {
             (-1, 0) => Face::Front, (1, 0) => Face::Back, _ => face,
         },
     }
+}
+
+/// Debug: Fill all blank cells on the current face with solution values
+fn debug_hint_face(app: &mut App) {
+    let face = app.current_face;
+    let mut filled = 0u32;
+    for u in 0..9u8 {
+        for v in 0..9u8 {
+            let coord = face.to_cube(u, v);
+            if let Some(cell) = app.game.grid.get(&coord) {
+                if !cell.given && cell.user_value.is_none() {
+                    if let Some(&sol) = app.game.solution.get(&coord) {
+                        if let Some(cell) = app.game.grid.get_mut(&coord) {
+                            cell.user_value = Some(sol);
+                            filled += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let lang = Lang::from_code(&app.settings.language);
+    app.set_message(
+        format!("{} {} cells", i18n::t("debug.hint", lang), filled),
+        Duration::from_secs(2),
+    );
 }

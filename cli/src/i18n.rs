@@ -83,5 +83,11 @@ tr_map! {
     "settings.guide_same" => { zh: "辅助-同数", en: "Guide-Same", ja: "ガイド-同数" },
     "settings.cube_scale" => { zh: "Cube缩放", en: "Cube Scale", ja: "Cubeｽｹｰﾙ" },
     "settings.show_cube" => { zh: "显示Cube", en: "Show Cube", ja: "Cube表示" },
+    "settings.cube_width" => { zh: "Cube宽度", en: "Cube Width", ja: "Cube幅" },
+    "settings.cube_height" => { zh: "Cube高度", en: "Cube Height", ja: "Cube高さ" },
+    "settings.debug_mode" => { zh: "调试模式", en: "Debug Mode", ja: "ﾃﾞﾊﾞｯｸﾞ" },
     "settings.language" => { zh: "语言", en: "Language", ja: "言語" },
+
+    // Debug
+    "debug.hint" => { zh: "已提示", en: "Hinted", ja: "ﾋﾝﾄ済み" },
 }
