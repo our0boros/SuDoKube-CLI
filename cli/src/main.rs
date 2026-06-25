@@ -149,6 +149,7 @@ pub enum MenuItem {
 pub struct MenuState {
     pub items: Vec<MenuItem>,
     pub selected: usize,
+    pub victories: Vec<GameRecord>,  // completed games for sidebar
 }
 
 impl MenuState {
@@ -163,9 +164,12 @@ impl MenuState {
         ];
         let unfinished = save::load_unfinished(20).unwrap_or_default();
         for record in unfinished {
-            items.push(MenuItem::Continue(record));
+            if !record.completed {
+                items.push(MenuItem::Continue(record));
+            }
         }
-        Self { items, selected: 0 }
+        let victories = save::load_completed(20).unwrap_or_default();
+        Self { items, selected: 0, victories }
     }
 }
 

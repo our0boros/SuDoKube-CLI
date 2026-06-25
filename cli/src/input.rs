@@ -161,6 +161,22 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                     app.menu = crate::MenuState::new();
                 }
             }
+            KeyCode::Char('e') | KeyCode::Char('E') => {
+                // Single game export
+                if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned() {
+                    let game = crate::continue_game(&r);
+                    let encrypted = true;
+                    let data = crate::save::export_game(&game, encrypted);
+                    if crate::save::copy_to_clipboard(&data) {
+                        let lang = Lang::from_code(&app.settings.language);
+                        app.set_message(i18n::t("export.copied", lang), std::time::Duration::from_secs(2));
+                    }
+                }
+            }
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                app.import_buffer.clear();
+                app.screen = AppScreen::ImportInput;
+            }
             _ => {}
         },
         Event::Mouse(mouse) => {

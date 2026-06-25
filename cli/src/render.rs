@@ -147,8 +147,8 @@ fn draw_menu(f: &mut Frame, app: &App) {
             format!("{} - {}", i18n::t("menu.new_easy", lang).split(" - ").next().unwrap_or("New"), i18n::t(diff_key, lang))
         }
         MenuItem::Settings => i18n::t("menu.settings", lang).into(),
-        MenuItem::Export => i18n::t("menu.export", lang).into(),
-        MenuItem::Import => i18n::t("menu.import", lang).into(),
+        MenuItem::Export => i18n::t("menu.export_all", lang).into(),
+        MenuItem::Import => i18n::t("menu.import_all", lang).into(),
         MenuItem::Continue(r) => {
             let total = r.answer.len() + r.puzzle.values().filter(|&&v| v == 0).count();
             let filled = r.puzzle.values().filter(|&&v| v > 0).count();
@@ -164,17 +164,92 @@ fn draw_menu(f: &mut Frame, app: &App) {
                 r.started_at.format("%m-%d").to_string(),
                 remaining, total,
                 r.elapsed_seconds / 60, r.elapsed_seconds % 60,
-                if r.completed { i18n::t("menu.completed", lang) } else { i18n::t("menu.in_progress", lang) }
+                if r.completed { i18n::t("menu.victory", lang) } else { i18n::t("menu.in_progress", lang) }
             )
         }
     }).collect();
 
     let max_text_w = item_texts.iter().map(|t| display_width(t) + 4).max().unwrap_or(20);
     let box_w = max_text_w + 4; // ╭ + " " + text + " " + ╮
-    let box_x = area.x + area.width.saturating_sub(box_w as u16) / 2;
+
+    // 侧边栏宽度
+    let sidebar_w: u16 = 28;
+    let total_w = box_w as u16 + 2 + sidebar_w; // menu + gap + sidebar
+
+    // If sidebar doesn't fit, skip it
+    let has_sidebar = area.width >= total_w;
+    let box_x = if has_sidebar {
+        area.x + area.width.saturating_sub(total_w) / 2
+    } else {
+        area.x + area.width.saturating_sub(box_w as u16) / 2
+    };
 
     // 画菜单框
     draw_menu_box(f, box_x, box_y, box_w as u16, &item_texts, app.menu.selected, area);
+
+    // 侧边栏：胜利记录
+    if has_sidebar {
+        let sidebar_x = box_x + box_w as u16 + 2;
+        let victories = &app.menu.victories;
+        let inner_sw = sidebar_w as usize - 2;
+
+        // 统计
+        let total_v = victories.len();
+        let easy_count = victories.iter().filter(|r| r.difficulty == "简单" || r.difficulty == "easy").count();
+        let med_count = victories.iter().filter(|r| r.difficulty == "中等" || r.difficulty == "medium").count();
+        let hard_count = victories.iter().filter(|r| r.difficulty == "困难" || r.difficulty == "hard").count();
+
+        let top = format!("╭{}╮", "─".repeat(inner_sw));
+        f.render_widget(Paragraph::new(top).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y, sidebar_w, 1));
+
+        let title = format!("│{:^width$}│", i18n::t("menu.sidebar_title", lang), width = inner_sw);
+        f.render_widget(Paragraph::new(title).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)), Rect::new(sidebar_x, box_y + 1, sidebar_w, 1));
+
+        let sep = format!("╟{}╢", "─".repeat(inner_sw));
+        f.render_widget(Paragraph::new(sep).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y + 2, sidebar_w, 1));
+
+        // 统计行
+        let stats = format!(" {}:{} {} {}:{} {} {}:{}", 
+            i18n::t("menu.sidebar_total", lang), total_v,
+            i18n::t("game.diff_easy", lang).chars().next().unwrap_or('E'), easy_count,
+            i18n::t("game.diff_medium", lang).chars().next().unwrap_or('M'), med_count,
+            i18n::t("game.diff_hard", lang).chars().next().unwrap_or('H'), hard_count
+        );
+        let stats_line = format!("│{:<width$}│", stats, width = inner_sw);
+        f.render_widget(Paragraph::new(stats_line).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y + 3, sidebar_w, 1));
+
+        let sep2 = format!("╟{}╢", "─".repeat(inner_sw));
+        f.render_widget(Paragraph::new(sep2).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y + 4, sidebar_w, 1));
+
+        // 胜利列表
+        let available_rows = area.bottom().saturating_sub(box_y + 5).saturating_sub(2) as usize; // reserve bottom border + hint
+        for (i, r) in victories.iter().enumerate().take(available_rows) {
+            let name = if app.settings.naming_mode == "vivid" {
+                i18n::vivid_name(r.id, lang)
+            } else {
+                format!("#{}", r.id)
+            };
+            // Short format: name | diff | time
+            let diff_short = match r.difficulty.as_str() {
+                "简单" | "easy" => i18n::t("game.diff_easy", lang),
+                "困难" | "hard" => i18n::t("game.diff_hard", lang),
+                _ => i18n::t("game.diff_medium", lang),
+            };
+            let text = format!(" {} {} {:02}:{:02}", name, diff_short, r.elapsed_seconds / 60, r.elapsed_seconds % 60);
+            let row_text = format!("│{:<width$}│", text, width = inner_sw);
+            f.render_widget(
+                Paragraph::new(row_text).style(Style::default().fg(Color::DarkGray)),
+                Rect::new(sidebar_x, box_y + 5 + i as u16, sidebar_w, 1),
+            );
+        }
+
+        // 底部
+        let bot_y = box_y + 5 + victories.len().min(available_rows) as u16;
+        if bot_y < area.bottom() {
+            let bot = format!("╰{}╯", "─".repeat(inner_sw));
+            f.render_widget(Paragraph::new(bot).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, bot_y, sidebar_w, 1));
+        }
+    }
 
     // 提示文字
     let hint = i18n::t("menu.hint_nav", lang);

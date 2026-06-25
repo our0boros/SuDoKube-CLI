@@ -40,8 +40,13 @@ tr_map! {
     "menu.settings" => { zh: "设置", en: "Settings", ja: "設定" },
     "menu.continue" => { zh: "继续", en: "Continue", ja: "続行" },
     "menu.completed" => { zh: "已完成", en: "Done", ja: "完了" },
+    "menu.victory" => { zh: "已胜利", en: "Victory", ja: "勝利" },
     "menu.in_progress" => { zh: "进行中", en: "Playing", ja: "プレイ中" },
-    "menu.hint_nav" => { zh: "↑/↓ 选择  Enter 确认  D 删除  Q 退出", en: "↑/↓ Select  Enter OK  D Delete  Q Quit", ja: "↑/↓ 選択  Enter 決定  D 削除  Q 終了" },
+    "menu.hint_nav" => { zh: "↑/↓ 选择  Enter 确认  D 删除  E 导出  I 导入  Q 退出", en: "↑/↓ Select  Enter OK  D Delete  E Export  I Import  Q Quit", ja: "↑/↓ 選択  Enter 決定  D 削除  E ｴｸｽﾎﾟｰﾄ  I ｲﾝﾎﾟｰﾄ  Q 終了" },
+    "menu.export_all" => { zh: "导出全部", en: "Export All", ja: "全ｴｸｽﾎﾟｰﾄ" },
+    "menu.import_all" => { zh: "导入全部", en: "Import All", ja: "全ｲﾝﾎﾟｰﾄ" },
+    "menu.sidebar_title" => { zh: "胜利记录", en: "Victories", ja: "勝利記録" },
+    "menu.sidebar_total" => { zh: "总局数", en: "Total", ja: "合計" },
 
     // Settings
     "settings.title" => { zh: "设 置", en: "Settings", ja: "設 定" },

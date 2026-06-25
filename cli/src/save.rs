@@ -136,6 +136,10 @@ pub fn load_unfinished(limit: usize) -> Result<Vec<GameRecord>> {
     load_records("WHERE completed = 0 ORDER BY started_at DESC LIMIT ?1", limit)
 }
 
+pub fn load_completed(limit: usize) -> Result<Vec<GameRecord>> {
+    load_records("WHERE completed = 1 ORDER BY started_at DESC LIMIT ?1", limit)
+}
+
 fn load_records(where_clause: &str, limit: usize) -> Result<Vec<GameRecord>> {
     let conn = init_db()?;
     let sql = format!(
