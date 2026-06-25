@@ -44,7 +44,31 @@ pub fn init_db() -> Result<Connection> {
         "ALTER TABLE games ADD COLUMN given TEXT NOT NULL DEFAULT ''",
         [],
     );
+    // 设置表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        [],
+    )?;
     Ok(conn)
+}
+
+pub fn save_setting(key: &str, value: &str) -> Result<()> {
+    let conn = init_db()?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        params![key, value],
+    )?;
+    Ok(())
+}
+
+pub fn load_setting(key: &str) -> Result<Option<String>> {
+    let conn = init_db()?;
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
+    let mut rows = stmt.query(params![key])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(row.get(0)?)),
+        None => Ok(None),
+    }
 }
 
 pub fn save_game(state: &GameState) -> Result<i64> {

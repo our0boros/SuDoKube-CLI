@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 sudokube-core = { path = "../core" }
 rand = "0.8"
-crossterm = "0.28"
+crossterm = "0.29"
+ratatui = "0.30"
 chrono = "0.4"
 rusqlite = { version = "0.34", features = ["bundled"] }

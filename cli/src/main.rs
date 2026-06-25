@@ -1,31 +1,132 @@
+mod i18n;
 mod input;
 mod render;
 mod save;
 
-use crossterm::{
-    cursor::{Hide, Show},
-    event::{DisableMouseCapture, EnableMouseCapture},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-    ExecutableCommand,
-};
-use rand::SeedableRng;
-use rand::rngs::StdRng;
 use std::io;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+use crossterm::event;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use ratatui::Terminal;
 use sudokube_core::cube::{CubeCoord, Difficulty, Face};
 use sudokube_core::game_state::GameState;
 use sudokube_core::puzzle::generate_puzzle;
 use sudokube_core::wfc::WfcGenerator;
 
 use input::{handle_event, EventResult};
-use render::{ButtonId, RenderMode, Theme};
-use save::{GameRecord, load_unfinished, save_game};
+use render::{ButtonId, RenderMode};
+use save::{save_game, GameRecord};
 
-/// 当前处于启动菜单还是游戏内。
+/// 当前画面
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppScreen {
     Menu,
     Game,
+    Settings,
+    Generating,
+}
+
+/// 可配置项
+#[derive(Debug, Clone)]
+pub struct AppSettings {
+    pub standard_cell_width: usize,   // 奇数
+    pub bg_color: String,             // "black", "darkgray"
+    pub border_color: String,         // "cyan", "white", "green"
+    pub guide_group_color: String,    // "green", "blue", "magenta"
+    pub guide_same_color: String,     // "blue", "magenta", "red"
+    pub cube_scale: String,           // "0.3", "0.35", "0.4", "0.45", "0.5"
+    pub show_cube: String,            // "yes", "no"
+    pub cube_width: String,           // "16", "18", "20", "22", "24"
+    pub cube_height: String,          // "14", "16", "18", "20", "22"
+    pub debug_mode: String,           // "off", "on"
+    pub language: String,             // "zh", "en", "ja"
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        let lang = detect_language();
+        Self {
+            standard_cell_width: 7,
+            bg_color: "black".into(),
+            border_color: "cyan".into(),
+            guide_group_color: "green".into(),
+            guide_same_color: "blue".into(),
+            cube_scale: "0.38".into(),
+            show_cube: "yes".into(),
+            cube_width: "20".into(),
+            cube_height: "18".into(),
+            debug_mode: "off".into(),
+            language: lang,
+        }
+    }
+}
+
+impl AppSettings {
+    pub fn load_from_db() -> Self {
+        let def = Self::default();
+        Self {
+            standard_cell_width: save::load_setting("standard_cell_width")
+                .ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(def.standard_cell_width),
+            bg_color: save::load_setting("bg_color").ok().flatten().unwrap_or(def.bg_color),
+            border_color: save::load_setting("border_color").ok().flatten().unwrap_or(def.border_color),
+            guide_group_color: save::load_setting("guide_group_color").ok().flatten().unwrap_or(def.guide_group_color),
+            guide_same_color: save::load_setting("guide_same_color").ok().flatten().unwrap_or(def.guide_same_color),
+            cube_scale: save::load_setting("cube_scale").ok().flatten().unwrap_or(def.cube_scale),
+            show_cube: save::load_setting("show_cube").ok().flatten().unwrap_or(def.show_cube),
+            cube_width: save::load_setting("cube_width").ok().flatten().unwrap_or(def.cube_width),
+            cube_height: save::load_setting("cube_height").ok().flatten().unwrap_or(def.cube_height),
+            debug_mode: save::load_setting("debug_mode").ok().flatten().unwrap_or(def.debug_mode),
+            language: save::load_setting("language").ok().flatten().unwrap_or(def.language),
+        }
+    }
+
+    pub fn save_to_db(&self) {
+        let _ = save::save_setting("standard_cell_width", &self.standard_cell_width.to_string());
+        let _ = save::save_setting("bg_color", &self.bg_color);
+        let _ = save::save_setting("border_color", &self.border_color);
+        let _ = save::save_setting("guide_group_color", &self.guide_group_color);
+        let _ = save::save_setting("guide_same_color", &self.guide_same_color);
+        let _ = save::save_setting("cube_scale", &self.cube_scale);
+        let _ = save::save_setting("show_cube", &self.show_cube);
+        let _ = save::save_setting("cube_width", &self.cube_width);
+        let _ = save::save_setting("cube_height", &self.cube_height);
+        let _ = save::save_setting("debug_mode", &self.debug_mode);
+        let _ = save::save_setting("language", &self.language);
+    }
+}
+
+fn detect_language() -> String {
+    // 根据系统时区检测语言
+    let tz = std::env::var("TZ").unwrap_or_default();
+    let lang = std::env::var("LANG").unwrap_or_default();
+    let locale = std::env::var("LC_ALL").unwrap_or_else(|_| {
+        std::env::var("LC_CTYPE").unwrap_or_default()
+    });
+
+    let check = format!("{}{}{}", tz, lang, locale).to_lowercase();
+    if check.contains("cn") || check.contains("zh") {
+        "zh".into()
+    } else if check.contains("jp") || check.contains("ja") {
+        "ja".into()
+    } else {
+        "en".into()
+    }
+}
+
+pub struct SettingsState {
+    pub fields: Vec<SettingsField>,
+    pub selected: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct SettingsField {
+    pub label: String,
+    pub value: String,
+    pub options: Vec<String>,
+    pub option_index: usize,
 }
 
 /// 启动菜单选项。
@@ -33,6 +134,7 @@ pub enum AppScreen {
 pub enum MenuItem {
     NewGame(Difficulty),
     Continue(GameRecord),
+    Settings,
 }
 
 pub struct MenuState {
@@ -46,8 +148,9 @@ impl MenuState {
             MenuItem::NewGame(Difficulty::Easy),
             MenuItem::NewGame(Difficulty::Medium),
             MenuItem::NewGame(Difficulty::Hard),
+            MenuItem::Settings,
         ];
-        let unfinished = load_unfinished(20).unwrap_or_default();
+        let unfinished = save::load_unfinished(20).unwrap_or_default();
         for record in unfinished {
             items.push(MenuItem::Continue(record));
         }
@@ -55,68 +158,71 @@ impl MenuState {
     }
 }
 
-pub struct CliState {
+/// 异步生成状态
+pub struct GeneratingState {
+    pub difficulty: Difficulty,
+    pub result: Arc<Mutex<Option<GameState>>>,
+    pub spinner: u8,
+    pub started: Instant,
+}
+
+/// 应用状态
+pub struct App {
     pub screen: AppScreen,
     pub menu: MenuState,
     pub game: GameState,
     pub current_face: Face,
     pub cursor: (u8, u8),
     pub render_mode: RenderMode,
-    pub theme: Theme,
     pub guidance: bool,
-    pub last_blink: Instant,
     pub blink_on: bool,
     pub message: String,
     pub message_until: Option<Instant>,
     pub hover_button: Option<ButtonId>,
-    // 懒刷新快照。
-    pub prev_screen: AppScreen,
-    pub prev_cursor: (u8, u8),
-    pub prev_face: Face,
-    pub prev_blink_on: bool,
-    pub prev_render_mode: RenderMode,
-    pub prev_theme: Theme,
-    pub prev_timer_text: String,
-    pub prev_message: String,
-    pub prev_grid_hash: u64,
-    pub prev_term_size: (u16, u16),
-    pub dirty: bool,
+    pub settings: AppSettings,
+    pub settings_ui: SettingsState,
+    pub generating: Option<GeneratingState>,
+    pub cube_angle_y: f64,  // 3D cube Y-axis rotation angle
+    pub cube_angle_x: f64,  // 3D cube X-axis rotation angle
 }
 
-impl CliState {
-    pub fn start_game(game: GameState) -> Self {
+impl App {
+    pub fn new_menu() -> Self {
         Self {
-            screen: AppScreen::Game,
+            screen: AppScreen::Menu,
             menu: MenuState::new(),
-            game,
+            game: GameState::new(
+                sudokube_core::cube::CubeGrid { cells: Default::default() },
+                Default::default(),
+                Difficulty::Medium,
+            ),
             current_face: Face::Front,
             cursor: (4, 4),
             render_mode: RenderMode::Standard,
-            theme: Theme::Dark,
             guidance: true,
-            last_blink: Instant::now(),
             blink_on: true,
             message: String::new(),
             message_until: None,
             hover_button: None,
-            prev_screen: AppScreen::Menu,
-            prev_cursor: (4, 4),
-            prev_face: Face::Front,
-            prev_blink_on: true,
-            prev_render_mode: RenderMode::Standard,
-            prev_theme: Theme::Dark,
-            prev_timer_text: String::new(),
-            prev_message: String::new(),
-            prev_grid_hash: 0,
-            prev_term_size: (0, 0),
-            dirty: true,
+            settings: AppSettings::load_from_db(),
+            settings_ui: SettingsState::from_settings(&AppSettings::load_from_db()),
+            generating: None,
+            cube_angle_y: 0.0,
+            cube_angle_x: 0.0,
+        }
+    }
+
+    pub fn start_game(game: GameState) -> Self {
+        Self {
+            screen: AppScreen::Game,
+            game,
+            ..Self::new_menu()
         }
     }
 
     pub fn set_message(&mut self, text: impl Into<String>, duration: Duration) {
         self.message = text.into();
         self.message_until = Some(Instant::now() + duration);
-        self.dirty = true;
     }
 
     pub fn clear_message_if_expired(&mut self) {
@@ -124,92 +230,170 @@ impl CliState {
             if Instant::now() >= until {
                 self.message.clear();
                 self.message_until = None;
-                self.dirty = true;
             }
         }
+    }
+
+    pub fn start_generating(&mut self, difficulty: Difficulty) {
+        let result = Arc::new(Mutex::new(None));
+        let result_clone = result.clone();
+        std::thread::spawn(move || {
+            let game = new_game(difficulty);
+            *result_clone.lock().unwrap() = Some(game);
+        });
+        self.generating = Some(GeneratingState {
+            difficulty,
+            result,
+            spinner: 0,
+            started: Instant::now(),
+        });
+        self.screen = AppScreen::Generating;
+    }
+
+    pub fn check_generating(&mut self) -> Option<GameState> {
+        if let Some(ref gen_state) = self.generating {
+            if let Ok(mut guard) = gen_state.result.lock() {
+                if guard.is_some() {
+                    return guard.take();
+                }
+            }
+        }
+        None
+    }
+}
+
+impl SettingsState {
+    pub fn from_settings(s: &AppSettings) -> Self {
+        let widths: Vec<String> = (3..=15).step_by(2).map(|n| n.to_string()).collect();
+        let colors = vec!["black".into(), "darkgray".into()];
+        let border_colors = vec!["cyan".into(), "white".into(), "green".into(), "yellow".into()];
+        let guide_colors = vec!["green".into(), "blue".into(), "magenta".into(), "red".into()];
+        let cube_scales = vec!["0.3".into(), "0.35".into(), "0.38".into(), "0.4".into(), "0.45".into(), "0.5".into()];
+        let yes_no = vec!["yes".into(), "no".into()];
+        let cube_widths = vec!["16".into(), "18".into(), "20".into(), "22".into(), "24".into()];
+        let cube_heights = vec!["14".into(), "16".into(), "18".into(), "20".into(), "22".into()];
+        let debug_modes = vec!["off".into(), "on".into()];
+        let languages = vec!["zh".into(), "en".into(), "ja".into()];
+
+        let fields = vec![
+            SettingsField::new("Cell Width", &s.standard_cell_width.to_string(), widths),
+            SettingsField::new("BG Color", &s.bg_color, colors),
+            SettingsField::new("Border Color", &s.border_color, border_colors.clone()),
+            SettingsField::new("Guide-Group", &s.guide_group_color, guide_colors.clone()),
+            SettingsField::new("Guide-Same", &s.guide_same_color, guide_colors),
+            SettingsField::new("Cube Scale", &s.cube_scale, cube_scales),
+            SettingsField::new("Show Cube", &s.show_cube, yes_no),
+            SettingsField::new("Cube Width", &s.cube_width, cube_widths),
+            SettingsField::new("Cube Height", &s.cube_height, cube_heights),
+            SettingsField::new("Debug Mode", &s.debug_mode, debug_modes),
+            SettingsField::new("Language", &s.language, languages),
+        ];
+        Self { fields, selected: 0 }
+    }
+
+    pub fn apply_to(&self, s: &mut AppSettings) {
+        s.standard_cell_width = self.fields[0].value.parse().unwrap_or(7);
+        s.bg_color = self.fields[1].value.clone();
+        s.border_color = self.fields[2].value.clone();
+        s.guide_group_color = self.fields[3].value.clone();
+        s.guide_same_color = self.fields[4].value.clone();
+        s.cube_scale = self.fields[5].value.clone();
+        s.show_cube = self.fields[6].value.clone();
+        s.cube_width = self.fields[7].value.clone();
+        s.cube_height = self.fields[8].value.clone();
+        s.debug_mode = self.fields[9].value.clone();
+        s.language = self.fields[10].value.clone();
+    }
+}
+
+impl SettingsField {
+    fn new(label: &str, current: &str, options: Vec<String>) -> Self {
+        let idx = options.iter().position(|o| o == current).unwrap_or(0);
+        Self {
+            label: label.into(),
+            value: current.into(),
+            options,
+            option_index: idx,
+        }
+    }
+
+    pub fn cycle_next(&mut self) {
+        self.option_index = (self.option_index + 1) % self.options.len();
+        self.value = self.options[self.option_index].clone();
+    }
+
+    pub fn cycle_prev(&mut self) {
+        if self.option_index == 0 {
+            self.option_index = self.options.len() - 1;
+        } else {
+            self.option_index -= 1;
+        }
+        self.value = self.options[self.option_index].clone();
     }
 }
 
 fn main() -> io::Result<()> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    stdout.execute(EnterAlternateScreen)?;
-    stdout.execute(Hide)?;
-    stdout.execute(EnableMouseCapture)?;
-
-    let result = run_app(&mut stdout);
-
-    let _ = stdout.execute(DisableMouseCapture);
-    stdout.execute(Show)?;
-    stdout.execute(LeaveAlternateScreen)?;
-    disable_raw_mode()?;
+    let terminal = ratatui::init();
+    crossterm::execute!(io::stdout(), crossterm::event::EnableMouseCapture)?;
+    let result = run_app(terminal);
+    crossterm::execute!(io::stdout(), crossterm::event::DisableMouseCapture)?;
+    ratatui::restore();
     result
 }
 
-fn run_app(stdout: &mut io::Stdout) -> io::Result<()> {
-    let menu = MenuState::new();
-    let mut state = CliState {
-        screen: AppScreen::Menu,
-        menu,
-        game: GameState::new(
-            sudokube_core::cube::CubeGrid { cells: Default::default() },
-            Default::default(),
-            Difficulty::Medium,
-        ),
-        current_face: Face::Front,
-        cursor: (4, 4),
-        render_mode: RenderMode::Standard,
-        theme: Theme::Dark,
-        guidance: true,
-        last_blink: Instant::now(),
-        blink_on: true,
-        message: String::new(),
-        message_until: None,
-        hover_button: None,
-        prev_screen: AppScreen::Game,
-        prev_cursor: (4, 4),
-        prev_face: Face::Front,
-        prev_blink_on: true,
-        prev_render_mode: RenderMode::Standard,
-        prev_theme: Theme::Dark,
-        prev_timer_text: String::new(),
-        prev_message: String::new(),
-        prev_grid_hash: 0,
-        prev_term_size: (0, 0),
-        dirty: true,
-    };
+fn run_app(mut terminal: Terminal<ratatui::backend::CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+    let mut app = App::new_menu();
+    let mut last_blink = Instant::now();
 
     loop {
+        // 闪烁定时器
         let now = Instant::now();
-        if now.duration_since(state.last_blink) >= Duration::from_millis(500) {
-            state.blink_on = !state.blink_on;
-            state.last_blink = now;
-            state.dirty = true;
+        if now.duration_since(last_blink) >= Duration::from_millis(500) {
+            app.blink_on = !app.blink_on;
+            last_blink = now;
         }
-        state.clear_message_if_expired();
+        app.clear_message_if_expired();
 
-        render::render(stdout, &mut state)?;
+        // 3D立方体自动旋转（两轴不同周期）
+        app.cube_angle_y += 0.03;
+        app.cube_angle_x += 0.02;
 
-        if crossterm::event::poll(Duration::from_millis(50))? {
-            let event = crossterm::event::read()?;
-            match handle_event(&mut state, event) {
+        // 检查生成进度
+        if app.screen == AppScreen::Generating {
+            if let Some(game) = app.check_generating() {
+                app.generating = None;
+                app = App::start_game(game);
+            } else if let Some(ref mut gen_state) = app.generating {
+                gen_state.spinner = (gen_state.spinner + 1) % 4;
+            }
+        }
+
+        // 渲染
+        terminal.draw(|f| render::draw(f, &app))?;
+
+        // 事件处理
+        if event::poll(Duration::from_millis(50))? {
+            let ev = event::read()?;
+            let area: ratatui::layout::Rect = terminal.size()?.into();
+            match handle_event(&mut app, ev, area) {
                 EventResult::Continue => {}
                 EventResult::StartGame(game) => {
-                    state = CliState::start_game(game);
+                    app = App::start_game(game);
+                }
+                EventResult::StartGenerating(difficulty) => {
+                    app.start_generating(difficulty);
                 }
                 EventResult::BackToMenu => {
-                    if state.screen == AppScreen::Game {
-                        flush_elapsed(&mut state);
-                        let _ = save_game(&state.game);
+                    if app.screen == AppScreen::Game {
+                        flush_elapsed(&mut app);
+                        let _ = save_game(&app.game);
                     }
-                    state.screen = AppScreen::Menu;
-                    state.menu = MenuState::new();
-                    state.dirty = true;
+                    app = App::new_menu();
                 }
                 EventResult::Quit => {
-                    if state.screen == AppScreen::Game {
-                        flush_elapsed(&mut state);
-                        let _ = save_game(&state.game);
+                    if app.screen == AppScreen::Game {
+                        flush_elapsed(&mut app);
+                        let _ = save_game(&app.game);
                     }
                     break;
                 }
@@ -243,7 +427,6 @@ pub fn continue_game(record: &GameRecord) -> GameState {
         record.answer.clone(),
         difficulty,
     );
-    // 恢复用户已填写的进度（非给定格）。
     for (coord, value) in &record.puzzle {
         if !given.contains(coord) {
             if let Some(cell) = game.grid.get_mut(coord) {
@@ -266,27 +449,25 @@ pub fn now_secs() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// 计算当前对局的总用时（包括之前保存的累计时间）。
-pub fn total_elapsed(state: &CliState) -> u64 {
-    let session = if state.game.started_at > 0.0 {
-        (now_secs() - state.game.started_at) as u64
+pub fn total_elapsed(app: &App) -> u64 {
+    let session = if app.game.started_at > 0.0 {
+        (now_secs() - app.game.started_at) as u64
     } else {
         0
     };
-    state.game.elapsed_seconds + session
+    app.game.elapsed_seconds + session
 }
 
-/// 将当前会话用时刷入 game.elapsed_seconds 并重置 started_at。
-pub fn flush_elapsed(state: &mut CliState) {
-    let session = if state.game.started_at > 0.0 {
-        (now_secs() - state.game.started_at) as u64
+pub fn flush_elapsed(app: &mut App) {
+    let session = if app.game.started_at > 0.0 {
+        (now_secs() - app.game.started_at) as u64
     } else {
         0
     };
-    state.game.elapsed_seconds += session;
-    state.game.started_at = now_secs();
+    app.game.elapsed_seconds += session;
+    app.game.started_at = now_secs();
 }
 
-pub fn current_coord(state: &CliState) -> CubeCoord {
-    state.current_face.to_cube(state.cursor.0, state.cursor.1)
+pub fn current_coord(app: &App) -> CubeCoord {
+    app.current_face.to_cube(app.cursor.0, app.cursor.1)
 }

@@ -1,17 +1,17 @@
-use crossterm::{
-    cursor::MoveTo,
-    style::{
-        Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
-    },
-    terminal::{Clear, ClearType, size},
-    QueueableCommand,
+use ratatui::{
+    Frame,
+    layout::Rect,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Paragraph},
 };
-use std::io::{self, Write};
-use sudokube_core::cube::{CubeCoord, Face};
+use sudokube_core::cube::Face;
 
-use crate::{AppScreen, CliState, MenuItem};
+use crate::{App, AppScreen, MenuItem, total_elapsed, AppSettings};
+use crate::i18n::{self, Lang};
 
-/// ASCII ART LOGO
+// ── 常量 ──
+
 const LOGO: &[&str] = &[
     " ██████  █    ██ ▓█████▄  ▒█████   ██ ▄█▀ █    ██  ▄▄▄▄   ▓█████   ",
     " ▒██    ▒  ██  ▓██▒▒██▀ ██▌▒██▒  ██▒ ██▄█▒  ██  ▓██▒▓█████▄ ▓█   ▀ ",
@@ -25,12 +25,11 @@ const LOGO: &[&str] = &[
     "                    ░                                     ░        ",
 ];
 
-/// 渲染字符模式。
+// ── 类型 ──
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderMode {
-    /// 标准 ASCII 字符模式，横向更宽，兼容性最好。
     Standard,
-    /// 等宽框线字符模式。
     Monospace,
 }
 
@@ -42,191 +41,38 @@ impl RenderMode {
         }
     }
 
-    pub fn metrics(self) -> Metrics {
+    pub fn cell_width(self, settings: &AppSettings) -> usize {
         match self {
-            RenderMode::Standard => Metrics {
-                cell_width: 5,
-                cell_height: 3,
-                sep: BoxChars {
-                    h_thin: '─',
-                    h_thick: '═',
-                    v_thin: '│',
-                    v_thick: '║',
-                    cross_thin_thin: '┼',
-                    cross_thin_thick: '╫',
-                    cross_thick_thin: '╪',
-                    cross_thick_thick: '╬',
-                    top_thin: '╤',
-                    top_thick: '╦',
-                    bot_thin: '╧',
-                    bot_thick: '╩',
-                },
-                top_left: '╔',
-                top_right: '╗',
-                mid_left: '╟',
-                mid_right: '╢',
-                bot_left: '╚',
-                bot_right: '╝',
-            },
-            RenderMode::Monospace => Metrics {
-                cell_width: 3,
-                cell_height: 3,
-                sep: BoxChars {
-                    h_thin: '─',
-                    h_thick: '═',
-                    v_thin: '│',
-                    v_thick: '║',
-                    cross_thin_thin: '┼',
-                    cross_thin_thick: '╫',
-                    cross_thick_thin: '╪',
-                    cross_thick_thick: '╬',
-                    top_thin: '╤',
-                    top_thick: '╦',
-                    bot_thin: '╧',
-                    bot_thick: '╩',
-                },
-                top_left: '╔',
-                top_right: '╗',
-                mid_left: '╟',
-                mid_right: '╢',
-                bot_left: '╚',
-                bot_right: '╝',
-            },
-        }
-    }
-}
-
-struct BoxChars {
-    h_thin: char,
-    h_thick: char,
-    v_thin: char,
-    v_thick: char,
-    cross_thin_thin: char,
-    cross_thin_thick: char,
-    cross_thick_thin: char,
-    cross_thick_thick: char,
-    top_thin: char,
-    top_thick: char,
-    bot_thin: char,
-    bot_thick: char,
-}
-
-pub struct Metrics {
-    cell_width: u16,
-    cell_height: u16,
-    sep: BoxChars,
-    top_left: char,
-    top_right: char,
-    mid_left: char,
-    mid_right: char,
-    bot_left: char,
-    bot_right: char,
-}
-
-impl Metrics {
-    pub fn grid_width(&self) -> u16 {
-        1 + 9 * (self.cell_width + 1)
-    }
-
-    pub fn grid_height(&self) -> u16 {
-        1 + 9 * (self.cell_height + 1)
-    }
-
-    pub fn cell_width(&self) -> u16 {
-        self.cell_width
-    }
-
-    pub fn cell_height(&self) -> u16 {
-        self.cell_height
-    }
-}
-
-/// 颜色主题。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Theme {
-    Dark,
-    Light,
-}
-
-impl Theme {
-    pub fn toggle(self) -> Self {
-        match self {
-            Theme::Dark => Theme::Light,
-            Theme::Light => Theme::Dark,
+            RenderMode::Standard => settings.standard_cell_width,
+            RenderMode::Monospace => 3,
         }
     }
 
-    fn colors(self) -> ThemeColors {
-        match self {
-            Theme::Dark => ThemeColors {
-                bg: Color::Black,
-                fg: Color::White,
-                given: Color::Yellow,
-                user: Color::Cyan,
-                error: Color::Red,
-                selected_bg: Color::White,
-                selected_fg: Color::Black,
-                button_bg: Color::DarkGrey,
-                button_fg: Color::White,
-                button_hover_bg: Color::White,
-                button_hover_fg: Color::Black,
-                header: Color::Cyan,
-                message: Color::Green,
-                guidance_group: Color::DarkGreen,
-                guidance_same: Color::DarkBlue,
-            },
-            Theme::Light => ThemeColors {
-                bg: Color::White,
-                fg: Color::Black,
-                given: Color::Blue,
-                user: Color::Magenta,
-                error: Color::Red,
-                selected_bg: Color::Black,
-                selected_fg: Color::White,
-                button_bg: Color::Grey,
-                button_fg: Color::Black,
-                button_hover_bg: Color::DarkGrey,
-                button_hover_fg: Color::White,
-                header: Color::DarkCyan,
-                message: Color::DarkGreen,
-                guidance_group: Color::DarkGreen,
-                guidance_same: Color::DarkBlue,
-            },
-        }
+    pub fn cell_height(self) -> usize {
+        3
     }
 }
 
-struct ThemeColors {
-    bg: Color,
-    fg: Color,
-    given: Color,
-    user: Color,
-    error: Color,
-    selected_bg: Color,
-    selected_fg: Color,
-    button_bg: Color,
-    button_fg: Color,
-    button_hover_bg: Color,
-    button_hover_fg: Color,
-    header: Color,
-    message: Color,
-    guidance_group: Color,
-    guidance_same: Color,
+pub fn mode_label(mode: RenderMode, lang: Lang) -> &'static str {
+    match mode {
+        RenderMode::Standard => i18n::t("game.mode_standard", lang),
+        RenderMode::Monospace => i18n::t("game.mode_mono", lang),
+    }
 }
 
-/// 屏幕布局计算结果。
-pub struct Layout {
-    pub term_cols: u16,
-    pub term_rows: u16,
-    pub grid_offset: (u16, u16),
-    pub info_row: u16,
-    pub message_row: u16,
-    pub buttons: Vec<ButtonArea>,
-    pub too_small: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ButtonId {
+    Number(u8),
+    Erase,
+    Hint,
+    Undo,
+    ToggleGuidance,
+    ToggleMode,
+    Quit,
 }
 
-#[derive(Debug, Clone)]
-pub struct ButtonArea {
+/// 按钮布局信息（用于鼠标点击检测）。
+pub struct ButtonLayout {
     pub id: ButtonId,
     pub label: String,
     pub col: u16,
@@ -234,660 +80,756 @@ pub struct ButtonArea {
     pub width: u16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ButtonId {
-    Number(u8),
-    Hint,
-    Undo,
-    ToggleGuidance,
-    ToggleMode,
-    ToggleTheme,
-    Quit,
+/// 游戏画面布局。
+pub struct GameLayout {
+    pub grid_area: Rect,
+    pub info_area: Rect,
+    pub msg_area: Rect,
+    pub btn_area: Rect,
+    pub cube_area: Rect,
+    pub buttons: Vec<ButtonLayout>,
 }
 
-pub fn render(stdout: &mut io::Stdout, state: &mut CliState) -> io::Result<()> {
-    let term_size = size()?;
-    let metrics = state.render_mode.metrics();
-    let layout = compute_layout(term_size, &metrics, state);
+// ── 主入口 ──
 
-    if layout.too_small {
-        if state.prev_term_size != term_size || state.dirty {
-            stdout.queue(Clear(ClearType::All))?;
-            let msg = "当前画面太小，请放大终端";
-            let col = term_size.0.saturating_sub(msg.len() as u16) / 2;
-            let row = term_size.1 / 2;
-            stdout.queue(MoveTo(col, row))?;
-            stdout.queue(SetForegroundColor(Color::Red))?;
-            stdout.queue(Print(msg))?;
-            stdout.queue(ResetColor)?;
-            stdout.flush()?;
-            state.prev_term_size = term_size;
-            state.dirty = false;
-        }
-        return Ok(());
+pub fn draw(f: &mut Frame, app: &App) {
+    match app.screen {
+        AppScreen::Menu => draw_menu(f, app),
+        AppScreen::Game => draw_game(f, app),
+        AppScreen::Settings => draw_settings(f, app),
+        AppScreen::Generating => draw_generating(f, app),
     }
-
-    let timer_text = format_timer(state);
-    let grid_hash = compute_grid_hash(state);
-
-    // Guidance 模式下，光标移动时需要刷新整个网格（同行列宫高亮变化）。
-    let guidance_changed = state.guidance && state.cursor != state.prev_cursor;
-
-    let need_full = state.dirty
-        && (state.screen != state.prev_screen
-            || state.render_mode != state.prev_render_mode
-            || state.theme != state.prev_theme
-            || state.current_face != state.prev_face
-            || grid_hash != state.prev_grid_hash
-            || term_size != state.prev_term_size
-            || guidance_changed);
-
-    if need_full {
-        stdout.queue(Clear(ClearType::All))?;
-        render_screen_full(stdout, state, &layout, &metrics, &timer_text)?;
-    } else if state.dirty {
-        render_screen_partial(stdout, state, &layout, &metrics, &timer_text, grid_hash)?;
-    }
-
-    if state.dirty {
-        state.prev_cursor = state.cursor;
-        state.prev_face = state.current_face;
-        state.prev_blink_on = state.blink_on;
-        state.prev_render_mode = state.render_mode;
-        state.prev_theme = state.theme;
-        state.prev_timer_text = timer_text;
-        state.prev_message.clone_from(&state.message);
-        state.prev_grid_hash = grid_hash;
-        state.prev_term_size = term_size;
-        state.prev_screen = state.screen;
-        state.dirty = false;
-    }
-
-    Ok(())
 }
 
-pub fn compute_layout_for_state(state: &CliState) -> Layout {
-    let term_size = size().unwrap_or((80, 24));
-    let metrics = state.render_mode.metrics();
-    compute_layout(term_size, &metrics, state)
-}
+// ── 菜单画面 ──
 
-fn compute_layout(term_size: (u16, u16), metrics: &Metrics, state: &CliState) -> Layout {
-    let (term_cols, term_rows) = term_size;
-    let grid_w = metrics.grid_width();
-    let grid_h = metrics.grid_height();
-    let info_height = 1;
-    let message_height = if state.screen == AppScreen::Game { 1 } else { 0 };
-    let button_height = 1;
-    let total_h = grid_h + info_height + message_height + button_height + 2;
-
-    let too_small = term_cols < grid_w + 4 || term_rows < total_h;
-
-    let grid_offset = (
-        (term_cols.saturating_sub(grid_w)) / 2,
-        (term_rows.saturating_sub(total_h)) / 2 + info_height,
+fn draw_menu(f: &mut Frame, app: &App) {
+    let area = f.area();
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        area,
     );
-    let info_row = grid_offset.1.saturating_sub(1);
-    let message_row = grid_offset.1 + grid_h + 1;
-    let button_row = message_row + message_height;
 
-    let mut buttons = Vec::new();
-    if state.screen == AppScreen::Game {
-        let mut col = grid_offset.0;
-        for n in 1..=9u8 {
-            let label = format!("[{}]", n);
-            let width = label.chars().count() as u16;
-            buttons.push(ButtonArea {
-                id: ButtonId::Number(n),
-                label,
-                col,
-                row: button_row,
-                width,
-            });
-            col += width + 1;
-        }
-        for (label, id) in [
-            ("[H]int", ButtonId::Hint),
-            ("[Z]undo", ButtonId::Undo),
-            ("[G]uide", ButtonId::ToggleGuidance),
-            ("[M]ode", ButtonId::ToggleMode),
-            ("[Y]theme", ButtonId::ToggleTheme),
-            ("[Q]menu", ButtonId::Quit),
-        ] {
-            let width = label.chars().count() as u16;
-            buttons.push(ButtonArea {
-                id,
-                label: label.to_string(),
-                col,
-                row: button_row,
-                width,
-            });
-            col += width + 1;
-        }
-    }
+    let logo_h = LOGO.len() as u16;
+    let items_len = app.menu.items.len() as u16;
+    let total_h = logo_h + 1 + items_len + 2 + 2 + 1; // logo + gap + box(1+items+1) + gap + hint
 
-    Layout {
-        term_cols,
-        term_rows,
-        grid_offset,
-        info_row,
-        message_row,
-        buttons,
-        too_small,
-    }
-}
-
-fn render_screen_full(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    layout: &Layout,
-    metrics: &Metrics,
-    timer_text: &str,
-) -> io::Result<()> {
-    let colors = state.theme.colors();
-    stdout.queue(SetBackgroundColor(colors.bg))?;
-    stdout.queue(Clear(ClearType::All))?;
-    stdout.queue(ResetColor)?;
-
-    match state.screen {
-        AppScreen::Menu => render_menu_full(stdout, state, layout)?,
-        AppScreen::Game => {
-            render_info_line(stdout, state, layout, timer_text)?;
-            render_grid_full(stdout, state, layout, metrics)?;
-            render_message_line(stdout, state, layout)?;
-            render_buttons(stdout, state, layout)?;
-        }
-    }
-    stdout.flush()?;
-    Ok(())
-}
-
-fn render_screen_partial(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    layout: &Layout,
-    metrics: &Metrics,
-    timer_text: &str,
-    grid_hash: u64,
-) -> io::Result<()> {
-    match state.screen {
-        AppScreen::Menu => render_menu_full(stdout, state, layout)?,
-        AppScreen::Game => {
-            if timer_text != state.prev_timer_text {
-                render_info_line(stdout, state, layout, timer_text)?;
-            }
-
-            if state.current_face == state.prev_face && state.render_mode == state.prev_render_mode {
-                if state.cursor != state.prev_cursor {
-                    render_cell(stdout, state, layout, metrics, state.prev_cursor.0, state.prev_cursor.1)?;
-                    render_cell(stdout, state, layout, metrics, state.cursor.0, state.cursor.1)?;
-                } else if state.blink_on != state.prev_blink_on {
-                    render_cell(stdout, state, layout, metrics, state.cursor.0, state.cursor.1)?;
-                }
-            }
-
-            if grid_hash != state.prev_grid_hash {
-                render_cell(stdout, state, layout, metrics, state.cursor.0, state.cursor.1)?;
-            }
-
-            if state.message != state.prev_message {
-                render_message_line(stdout, state, layout)?;
-            }
-
-            render_buttons(stdout, state, layout)?;
-            stdout.flush()?;
-        }
-    }
-    Ok(())
-}
-
-fn render_menu_full(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    layout: &Layout,
-) -> io::Result<()> {
-    let colors = state.theme.colors();
+    let start_y = area.y + area.height.saturating_sub(total_h) / 2;
 
     // 绘制 LOGO
     let logo_width = LOGO.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u16;
-    let mut row = std::cmp::max(layout.term_rows / 2 - 8 - state.menu.items.len() as u16 / 2, 1);
-    for line in LOGO {
-        let col = (layout.term_cols.saturating_sub(logo_width)) / 2;
-        stdout.queue(MoveTo(col, row))?;
-        stdout.queue(SetForegroundColor(colors.header))?;
-        stdout.queue(SetAttribute(Attribute::Bold))?;
-        stdout.queue(Print(*line))?;
-        stdout.queue(ResetColor)?;
-        row += 1;
-    }
-    row += 1;
-
-    // 绘制菜单框
-    let max_item_len = state.menu.items.iter().map(|item| match item {
-        MenuItem::NewGame(d) => format!("  新游戏 - {}  ", d.as_str()).len(),
-        MenuItem::Continue(r) => format!("  继续 #{} | {} | {:02}:{:02} | {}  ",
-            r.id, r.difficulty, r.elapsed_seconds / 60, r.elapsed_seconds % 60,
-            if r.completed { "已完成" } else { "进行中" }).len(),
-    }).max().unwrap_or(20);
-    let box_w = max_item_len as u16 + 4;
-    let box_h = state.menu.items.len() as u16 + 2;
-    let box_col = (layout.term_cols.saturating_sub(box_w)) / 2;
-    let box_row = row;
-
-    // 画框 ╭─╮
-    stdout.queue(MoveTo(box_col, box_row))?;
-    stdout.queue(SetForegroundColor(colors.header))?;
-    stdout.queue(Print("╭"))?;
-    stdout.queue(Print("─".repeat((box_w - 2) as usize)))?;
-    stdout.queue(Print("╮"))?;
-
-    for (i, item) in state.menu.items.iter().enumerate() {
-        let label = match item {
-            MenuItem::NewGame(d) => format!("新游戏 - {}", d.as_str()),
-            MenuItem::Continue(r) => format!(
-                "继续 #{} | {} | {:02}:{:02} | {}",
-                r.id,
-                r.difficulty,
-                r.elapsed_seconds / 60,
-                r.elapsed_seconds % 60,
-                if r.completed { "已完成" } else { "进行中" }
-            ),
-        };
-        let prefix = if i == state.menu.selected { "▸ " } else { "  " };
-        let line = format!("{}{}", prefix, label);
-        let inner_w = box_w as usize - 4;
-        let padded = format!(" {:width$} ", line, width = inner_w - 2);
-        stdout.queue(MoveTo(box_col, box_row + 1 + i as u16))?;
-        stdout.queue(SetForegroundColor(colors.header))?;
-        stdout.queue(Print("│"))?;
-        if i == state.menu.selected {
-            stdout.queue(SetBackgroundColor(colors.selected_bg))?;
-            stdout.queue(SetForegroundColor(colors.selected_fg))?;
-        } else {
-            stdout.queue(SetBackgroundColor(colors.bg))?;
-            stdout.queue(SetForegroundColor(colors.fg))?;
+    for (i, line) in LOGO.iter().enumerate() {
+        let col = area.x + area.width.saturating_sub(logo_width) / 2;
+        let row = start_y + i as u16;
+        if row < area.bottom() {
+            f.render_widget(
+                Paragraph::new(*line).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Rect::new(col, row, logo_width, 1),
+            );
         }
-        stdout.queue(Print(&padded))?;
-        stdout.queue(ResetColor)?;
-        stdout.queue(SetForegroundColor(colors.header))?;
-        stdout.queue(Print("│"))?;
     }
 
-    // 画框 ╰─╯
-    stdout.queue(MoveTo(box_col, box_row + 1 + state.menu.items.len() as u16))?;
-    stdout.queue(SetForegroundColor(colors.header))?;
-    stdout.queue(Print("╰"))?;
-    stdout.queue(Print("─".repeat((box_w - 2) as usize)))?;
-    stdout.queue(Print("╯"))?;
+    let box_y = start_y + logo_h + 1;
 
-    // 提示
-    let hint_row = box_row + box_h + 1;
-    let hint = "↑/↓ 选择  Enter 确认  D 删除  Q 退出";
-    let hint_col = (layout.term_cols.saturating_sub(hint.chars().count() as u16)) / 2;
-    stdout.queue(MoveTo(hint_col, hint_row))?;
-    stdout.queue(SetForegroundColor(colors.fg))?;
-    stdout.queue(Print(hint))?;
-    stdout.queue(ResetColor)?;
+    // 计算菜单项文本
+    let lang = Lang::from_code(&app.settings.language);
+    let item_texts: Vec<String> = app.menu.items.iter().map(|item| match item {
+        MenuItem::NewGame(d) => {
+            let diff_key = match d {
+                sudokube_core::cube::Difficulty::Easy => "game.diff_easy",
+                sudokube_core::cube::Difficulty::Medium => "game.diff_medium",
+                sudokube_core::cube::Difficulty::Hard => "game.diff_hard",
+            };
+            format!("{} - {}", i18n::t("menu.new_easy", lang).split(" - ").next().unwrap_or("New"), i18n::t(diff_key, lang))
+        }
+        MenuItem::Settings => i18n::t("menu.settings", lang).into(),
+        MenuItem::Continue(r) => format!(
+            "{} #{} | {} | {:02}:{:02} | {}",
+            i18n::t("menu.continue", lang), r.id, r.difficulty,
+            r.elapsed_seconds / 60, r.elapsed_seconds % 60,
+            if r.completed { i18n::t("menu.completed", lang) } else { i18n::t("menu.in_progress", lang) }
+        ),
+    }).collect();
 
-    stdout.flush()?;
-    Ok(())
+    let max_text_w = item_texts.iter().map(|t| display_width(t) + 4).max().unwrap_or(20);
+    let box_w = max_text_w + 4; // ╭ + " " + text + " " + ╮
+    let box_x = area.x + area.width.saturating_sub(box_w as u16) / 2;
+
+    // 画菜单框
+    draw_menu_box(f, box_x, box_y, box_w as u16, &item_texts, app.menu.selected, area);
+
+    // 提示文字
+    let hint = i18n::t("menu.hint_nav", lang);
+    let hint_col = area.x + area.width.saturating_sub(hint.chars().count() as u16) / 2;
+    let hint_row = box_y + 2 + items_len + 1;
+    if hint_row < area.bottom() {
+        f.render_widget(
+            Paragraph::new(hint).style(Style::default().fg(Color::White)),
+            Rect::new(hint_col, hint_row, hint.chars().count() as u16, 1),
+        );
+    }
 }
 
-fn render_info_line(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    layout: &Layout,
-    timer_text: &str,
-) -> io::Result<()> {
-    let colors = state.theme.colors();
-    let info_text = format!(
-        " ╢ [{}] 面:{} 难度:{} 时间:{} Alt+滚轮横向 ╟",
-        mode_label(state.render_mode),
-        face_name(state.current_face),
-        state.game.difficulty.as_str(),
-        timer_text
+fn draw_menu_box(f: &mut Frame, x: u16, y: u16, w: u16, items: &[String], selected: usize, area: Rect) {
+    let inner_w = w.saturating_sub(2) as usize; // 去掉两侧 ╭╮
+    let _h = items.len() as u16 + 2; // 顶 + items + 底
+
+    // 顶行 ╭─╮
+    if y < area.bottom() {
+        let top = format!("╭{}╮", "─".repeat(inner_w));
+        f.render_widget(
+            Paragraph::new(top).style(Style::default().fg(Color::Cyan)),
+            Rect::new(x, y, w, 1),
+        );
+    }
+
+    // 内容行
+    for (i, text) in items.iter().enumerate() {
+        let row = y + 1 + i as u16;
+        if row >= area.bottom() { break; }
+
+        let prefix = if i == selected { "▸ " } else { "  " };
+        let line_text = format!("{}{}", prefix, text);
+        let line_dw = display_width(&line_text);
+        let padding = inner_w.saturating_sub(2 + line_dw);
+        let padded = format!(" {}{} ", line_text, " ".repeat(padding));
+
+        let style = if i == selected {
+            Style::default().bg(Color::White).fg(Color::Black)
+        } else {
+            Style::default().bg(Color::Black).fg(Color::White)
+        };
+
+        let line_span = Line::from(vec![
+            Span::styled("│", Style::default().fg(Color::Cyan)),
+            Span::styled(padded, style),
+            Span::styled("│", Style::default().fg(Color::Cyan)),
+        ]);
+        f.render_widget(Paragraph::new(line_span), Rect::new(x, row, w, 1));
+    }
+
+    // 底行 ╰─╯
+    let bot_row = y + 1 + items.len() as u16;
+    if bot_row < area.bottom() {
+        let bot = format!("╰{}╯", "─".repeat(inner_w));
+        f.render_widget(
+            Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
+            Rect::new(x, bot_row, w, 1),
+        );
+    }
+}
+
+// ── 游戏画面 ──
+
+fn draw_game(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let bg = parse_color(&app.settings.bg_color);
+    let border = parse_color(&app.settings.border_color);
+    // 整体背景
+    f.render_widget(
+        Block::default().style(Style::default().bg(bg)),
+        area,
     );
-    // 画框顶行
-    let grid_w = state.render_mode.metrics().grid_width();
-    let start_col = layout.grid_offset.0;
-    stdout.queue(MoveTo(start_col, layout.info_row))?;
-    stdout.queue(SetForegroundColor(colors.header))?;
-    stdout.queue(Print("╭"))?;
-    stdout.queue(Print("─".repeat((grid_w - 2) as usize)))?;
-    stdout.queue(Print("╮"))?;
-    stdout.queue(MoveTo(start_col, layout.info_row + 1))?;
-    stdout.queue(Print("│"))?;
-    stdout.queue(ResetColor)?;
-    stdout.queue(Print(&info_text))?;
-    // 填充到右框线位置
-    let text_end = start_col as usize + 1 + info_text.chars().count();
-    let right_pos = start_col as usize + grid_w as usize - 1;
-    if text_end < right_pos {
-        stdout.queue(Print(" ".repeat(right_pos - text_end)))?;
+
+    let layout = compute_game_layout_from_rect(f.area(), app);
+
+    // 信息栏
+    draw_info_panel(f, &layout, app, bg, border);
+    // 数独网格
+    draw_sudoku_grid(f, &layout, app, bg, border);
+    // 消息行
+    draw_message(f, &layout, app, bg);
+    // 按钮栏
+    draw_button_bar(f, &layout, app, bg, border);
+    // 3D立方体
+    if app.settings.show_cube == "yes" {
+        draw_3d_cube(f, &layout, app);
     }
-    stdout.queue(SetForegroundColor(colors.header))?;
-    stdout.queue(Print("│"))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
 }
 
-fn render_message_line(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    layout: &Layout,
-) -> io::Result<()> {
-    let colors = state.theme.colors();
-    stdout.queue(MoveTo(0, layout.message_row))?;
-    if !state.message.is_empty() {
-        stdout.queue(SetForegroundColor(colors.message))?;
-        stdout.queue(Print(&state.message))?;
-        stdout.queue(ResetColor)?;
+pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
+    let cw = app.render_mode.cell_width(&app.settings);
+    let ch = app.render_mode.cell_height();
+    let grid_inner_w = (1 + 9 * (cw + 1)) as u16;
+    let grid_inner_h = (1 + 9 * (ch + 1)) as u16;
+    let _grid_w = grid_inner_w + 2; // 外边框左右各1
+    let grid_h = grid_inner_h + 2; // 外边框上下各1
+
+    // 信息栏高度 3 行（╭─╮ + 内容 + ╰─╯）
+    let info_h = 3u16;
+    // 消息行 1 行
+    let msg_h = 1u16;
+    // 按钮栏高度 3 行
+    let btn_h = 3u16;
+    let gap = 1u16;
+
+    // 右侧立方体宽度
+    let _cube_w = 20u16;
+
+    let total_h = info_h + gap + grid_h + gap + msg_h + gap + btn_h;
+
+    let vert_offset = area.height.saturating_sub(total_h) / 2;
+
+    let info_y = area.y + vert_offset;
+    let grid_y = info_y + info_h + gap;
+    let msg_y = grid_y + grid_h + gap;
+    let btn_y = msg_y + msg_h + gap;
+
+    // 网格靠左，右侧留给立方体
+    let left_margin = 2u16;
+    let grid_x = area.x + left_margin + 1; // +1 for outer border left
+
+    // 信息栏宽度和位置
+    let lang = Lang::from_code(&app.settings.language);
+    let info_text = format!(
+        "  [{}] 面:{}  难度:{}  时间:{}  ",
+        mode_label(app.render_mode, lang),
+        face_name(app.current_face, lang),
+        app.game.difficulty.as_str(),
+        format_timer(app)
+    );
+    let info_w = display_width(&info_text) as u16 + 4;
+
+    let info_area = Rect::new(area.x, info_y, info_w.min(area.width), info_h);
+    let grid_area = Rect::new(grid_x, grid_y, grid_inner_w, grid_inner_h);
+    let msg_area = Rect::new(grid_x, msg_y, grid_inner_w, msg_h);
+    let btn_area = Rect::new(area.x, btn_y, area.width, btn_h);
+
+    // 3D立方体区域 - 网格右侧
+    let cube_w: u16 = app.settings.cube_width.parse().unwrap_or(20);
+    let cube_h: u16 = app.settings.cube_height.parse().unwrap_or(18);
+    let cube_x = grid_x + grid_inner_w + 4; // 网格外边框+间距
+    let cube_area = Rect::new(cube_x, grid_y, cube_w, cube_h);
+
+    // 按钮布局 - 计算居中后的起始列
+    let btn_row = btn_y + 1; // 框内内容行
+
+    // 先收集所有按钮的label和width
+    let btn_defs: Vec<(String, ButtonId, u16)> = (1..=9u8)
+        .map(|n| {
+            let label = format!("[{}]", n);
+            let w = label.chars().count() as u16;
+            (label, ButtonId::Number(n), w)
+        })
+        .chain(
+            [
+                ("[X]Erase", ButtonId::Erase),
+                ("[H]Hint", ButtonId::Hint),
+                ("[Z]Undo", ButtonId::Undo),
+                ("[G]Guide", ButtonId::ToggleGuidance),
+                ("[M]Mode", ButtonId::ToggleMode),
+                ("[Q]Menu", ButtonId::Quit),
+            ].iter().map(|(label, id)| {
+                let w = label.chars().count() as u16;
+                (label.to_string(), *id, w)
+            })
+        )
+        .collect();
+
+    // 计算按钮内容总宽，与 draw_button_bar 一致
+    let total_btn_w: usize = btn_defs.iter().map(|(_, _, w)| *w as usize + 1).sum::<usize>().saturating_sub(1);
+    let inner_w = total_btn_w + 4; // 两侧空格
+    let bar_w = inner_w + 2; // 两侧 │
+    let bar_x = area.x + area.width.saturating_sub(bar_w as u16) / 2;
+
+    // 按钮起始列 = bar_x + 1(│) + 1(空格)
+    let mut col = bar_x + 2;
+    let mut buttons = Vec::new();
+    for (label, id, w) in btn_defs {
+        buttons.push(ButtonLayout {
+            id,
+            label,
+            col,
+            row: btn_row,
+            width: w,
+        });
+        col += w + 1;
     }
-    stdout.queue(Clear(ClearType::UntilNewLine))?;
-    Ok(())
+
+    GameLayout {
+        grid_area,
+        info_area,
+        msg_area,
+        btn_area,
+        cube_area,
+        buttons,
+    }
 }
 
-fn render_buttons(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    layout: &Layout,
-) -> io::Result<()> {
-    let colors = state.theme.colors();
+fn draw_info_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
+    let lang = Lang::from_code(&app.settings.language);
+    let info_text = format!(
+        "  [{}] 面:{}  难度:{}  时间:{}  ",
+        mode_label(app.render_mode, lang),
+        face_name(app.current_face, lang),
+        app.game.difficulty.as_str(),
+        format_timer(app)
+    );
+    let inner_w = display_width(&info_text);
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+
+    let x = layout.info_area.x;
+    let y = layout.info_area.y;
+
+    // 顶行
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(border)),
+        Rect::new(x, y, (inner_w + 2) as u16, 1),
+    );
+    // 内容行
+    let line = Line::from(vec![
+        Span::styled("│", Style::default().fg(border)),
+        Span::styled(info_text, Style::default().fg(Color::White).bg(bg)),
+        Span::styled("│", Style::default().fg(border)),
+    ]);
+    f.render_widget(
+        Paragraph::new(line),
+        Rect::new(x, y + 1, (inner_w + 2) as u16, 1),
+    );
+    // 底行 ╰─╯
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(border)),
+        Rect::new(x, y + 2, (inner_w + 2) as u16, 1),
+    );
+}
+
+fn draw_sudoku_grid(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
+    let cw = app.render_mode.cell_width(&app.settings);
+    let ch = app.render_mode.cell_height();
+    let ox = layout.grid_area.x;
+    let oy = layout.grid_area.y;
+
+    // 外边框 - 颜色对应当前面
+    let face_color = face_to_color(app.current_face);
+    let grid_w = layout.grid_area.width;
+    let grid_h = layout.grid_area.height;
+
+    // 顶
+    let top_outer = format!("╔{}╗", "═".repeat(grid_w as usize));
+    f.render_widget(
+        Paragraph::new(top_outer).style(Style::default().fg(face_color)),
+        Rect::new(ox.saturating_sub(1), oy.saturating_sub(1), grid_w + 2, 1),
+    );
+    // 左右 + 内容区域两侧
+    for row in 0..grid_h {
+        let y = oy + row;
+        f.render_widget(
+            Paragraph::new("║").style(Style::default().fg(face_color)),
+            Rect::new(ox.saturating_sub(1), y, 1, 1),
+        );
+        f.render_widget(
+            Paragraph::new("║").style(Style::default().fg(face_color)),
+            Rect::new(ox + grid_w, y, 1, 1),
+        );
+    }
+    // 底
+    let bot_outer = format!("╚{}╝", "═".repeat(grid_w as usize));
+    f.render_widget(
+        Paragraph::new(bot_outer).style(Style::default().fg(face_color)),
+        Rect::new(ox.saturating_sub(1), oy + grid_h, grid_w + 2, 1),
+    );
+
+    // 逐行逐列绘制网格
+    for v in 0..9usize {
+        // 分隔行
+        let sep_y = oy + v as u16 * (ch as u16 + 1);
+        draw_separator(f, ox, sep_y, cw, v == 0, false, v % 3 == 0, layout.grid_area, border);
+
+        // 单元格内容行
+        for line in 0..ch {
+            let row_y = oy + v as u16 * (ch as u16 + 1) + 1 + line as u16;
+            draw_cell_row(f, ox, row_y, cw, ch, v, line, app, layout.grid_area, bg, border);
+        }
+    }
+
+    // 底部分隔行
+    let bot_y = oy + 9 * (ch as u16 + 1);
+    draw_separator(f, ox, bot_y, cw, false, true, true, layout.grid_area, border);
+}
+
+fn draw_separator(
+    f: &mut Frame, x: u16, y: u16, cw: usize,
+    is_top: bool, is_bottom: bool, is_thick_h: bool,
+    bounds: Rect, border: Color,
+) {
+    if y >= bounds.bottom() { return; }
+
+    let mut buf = String::new();
+    // 左角
+    buf.push(if is_top { '╔' } else if is_bottom { '╚' } else { '╟' });
+
+    for u in 0..9usize {
+        let h_char = if is_thick_h { '═' } else { '─' };
+        buf.push_str(&h_char.to_string().repeat(cw));
+
+        if u < 8 {
+            let is_major_v = (u + 1) % 3 == 0;
+            buf.push(if is_top {
+                if is_major_v { '╦' } else { '╤' }
+            } else if is_bottom {
+                if is_major_v { '╩' } else { '╧' }
+            } else if is_thick_h {
+                if is_major_v { '╬' } else { '╪' }
+            } else if is_major_v {
+                '╫'
+            } else {
+                '┼'
+            });
+        }
+    }
+
+    // 右角
+    buf.push(if is_top { '╗' } else if is_bottom { '╝' } else { '╢' });
+
+    let w = buf.chars().count() as u16;
+    f.render_widget(
+        Paragraph::new(buf).style(Style::default().fg(border)),
+        Rect::new(x, y, w.min(bounds.width), 1),
+    );
+}
+
+fn draw_cell_row(
+    f: &mut Frame, x: u16, y: u16, cw: usize, ch: usize,
+    v: usize, line: usize, app: &App, bounds: Rect, _bg: Color, border: Color,
+) {
+    if y >= bounds.bottom() { return; }
+
+    let mut spans: Vec<Span> = Vec::new();
+
+    for u in 0..9usize {
+        // 竖线
+        let v_char = if u % 3 == 0 { '║' } else { '│' };
+        spans.push(Span::styled(
+            v_char.to_string(),
+            Style::default().fg(border),
+        ));
+
+        // 单元格内容
+        let coord = app.current_face.to_cube(u as u8, v as u8);
+        let cell = app.game.grid.get(&coord);
+        let selected = app.cursor == (u as u8, v as u8);
+        let is_given = cell.map(|c| c.given).unwrap_or(false);
+        let value = cell.and_then(|c| c.user_value);
+        let is_error = value.map_or(false, |n| is_wrong(app, coord, n));
+
+        let (in_same_group, has_same_number) = if app.guidance && !selected {
+            let sel_coord = app.current_face.to_cube(app.cursor.0, app.cursor.1);
+            let same_row = app.cursor.1 == v as u8;
+            let same_col = app.cursor.0 == u as u8;
+            let same_box = app.cursor.0 / 3 == u as u8 / 3 && app.cursor.1 / 3 == v as u8 / 3;
+            let in_group = same_row || same_col || same_box;
+            let sel_value = app.game.grid.get(&sel_coord).and_then(|c| c.user_value);
+            let same_num = value.is_some() && value == sel_value;
+            (in_group, same_num)
+        } else {
+            (false, false)
+        };
+
+        let mid_line = ch / 2;
+        let mut content = " ".repeat(cw);
+        if line == mid_line {
+            if let Some(n) = value {
+                let s = ((b'0' + n) as char).to_string();
+                let start = (cw - 1) / 2;
+                content.replace_range(start..start + 1, &s);
+            }
+        }
+
+        let guide_group = parse_color(&app.settings.guide_group_color);
+        let guide_same = parse_color(&app.settings.guide_same_color);
+        let style = if selected && is_error {
+            Style::default().bg(Color::White).fg(Color::Red)
+        } else if selected && app.blink_on {
+            Style::default().bg(Color::White).fg(Color::Black)
+        } else if selected {
+            Style::default().bg(Color::Gray).fg(Color::White)
+        } else if in_same_group && has_same_number {
+            Style::default().bg(guide_same).fg(Color::White)
+        } else if in_same_group {
+            Style::default().bg(guide_group).fg(Color::White)
+        } else if has_same_number {
+            Style::default().bg(guide_same).fg(Color::White)
+        } else if is_error {
+            Style::default().fg(Color::Red)
+        } else if is_given {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        } else if value.is_some() {
+            Style::default().fg(border)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        spans.push(Span::styled(content, style));
+    }
+
+    // 右侧封口
+    spans.push(Span::styled("║".to_string(), Style::default().fg(border)));
+
+    let total_w: u16 = spans.iter().map(|s| s.content.chars().count() as u16).sum();
+    f.render_widget(
+        Paragraph::new(Line::from(spans)),
+        Rect::new(x, y, total_w.min(bounds.width), 1),
+    );
+}
+
+fn draw_message(f: &mut Frame, layout: &GameLayout, app: &App, _bg: Color) {
+    if app.message.is_empty() { return; }
+    let style = Style::default().fg(Color::Green);
+    f.render_widget(
+        Paragraph::new(app.message.as_str()).style(style),
+        layout.msg_area,
+    );
+}
+
+fn draw_button_bar(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
+    let x = layout.btn_area.x;
+    let y = layout.btn_area.y;
+    let w = layout.btn_area.width;
+
+    if w < 4 || layout.btn_area.height < 3 { return; }
+
+    // 计算按钮内容总宽
+    let total_btn_w: usize = layout.buttons.iter().map(|b| b.width as usize + 1).sum::<usize>().saturating_sub(1);
+    let inner_w = total_btn_w + 4; // 两侧空格
+    let bar_w = inner_w + 2; // 两侧 │
+
+    let bar_x = x + w.saturating_sub(bar_w as u16) / 2;
+
+    // 顶行 ╭─╮
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(border)),
+        Rect::new(bar_x, y, bar_w as u16, 1),
+    );
+
+    // 内容行：按钮
+    let mut spans: Vec<Span> = vec![Span::styled("│", Style::default().fg(border)), Span::raw(" ")];
     for btn in &layout.buttons {
-        stdout.queue(MoveTo(btn.col, btn.row))?;
-        if state.hover_button == Some(btn.id) {
-            stdout.queue(SetBackgroundColor(colors.button_hover_bg))?;
-            stdout.queue(SetForegroundColor(colors.button_hover_fg))?;
+        let is_hover = app.hover_button == Some(btn.id);
+        let style = if is_hover {
+            Style::default().bg(Color::White).fg(Color::Black)
         } else {
-            stdout.queue(SetBackgroundColor(colors.button_bg))?;
-            stdout.queue(SetForegroundColor(colors.button_fg))?;
-        }
-        stdout.queue(Print(&btn.label))?;
-        stdout.queue(ResetColor)?;
-    }
-    if let Some(last) = layout.buttons.last() {
-        let end_col = last.col + last.width;
-        stdout.queue(MoveTo(end_col, last.row))?;
-        stdout.queue(Clear(ClearType::UntilNewLine))?;
-    }
-    Ok(())
-}
-
-fn render_grid_full(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    layout: &Layout,
-    metrics: &Metrics,
-) -> io::Result<()> {
-    for v in 0..9u8 {
-        let sep_row = grid_separator_row(layout, v);
-        stdout.queue(MoveTo(layout.grid_offset.0, sep_row))?;
-        print_separator(stdout, metrics, v == 0, v == 8, v % 3 == 0)?;
-
-        for line in 0..metrics.cell_height {
-            let row = grid_cell_row(layout, v, line);
-            stdout.queue(MoveTo(layout.grid_offset.0, row))?;
-            for u in 0..9u8 {
-                let v_line = if u % 3 == 0 {
-                    metrics.sep.v_thick
-                } else {
-                    metrics.sep.v_thin
-                };
-                stdout.queue(Print(v_line))?;
-                print_cell_content(stdout, state, metrics, u, v, line)?;
-            }
-            stdout.queue(Print(metrics.sep.v_thick))?;
-            stdout.queue(Clear(ClearType::UntilNewLine))?;
-        }
-    }
-
-    let bot_row = grid_separator_row(layout, 9);
-    stdout.queue(MoveTo(layout.grid_offset.0, bot_row))?;
-    print_separator(stdout, metrics, true, true, true)?;
-    Ok(())
-}
-
-fn render_cell(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    layout: &Layout,
-    metrics: &Metrics,
-    u: u8,
-    v: u8,
-) -> io::Result<()> {
-    for line in 0..metrics.cell_height {
-        let row = grid_cell_row(layout, v, line);
-        let col = layout.grid_offset.0 + 1 + u as u16 * (metrics.cell_width + 1);
-        stdout.queue(MoveTo(col, row))?;
-        print_cell_content(stdout, state, metrics, u, v, line)?;
-    }
-    Ok(())
-}
-
-fn print_separator(
-    stdout: &mut io::Stdout,
-    metrics: &Metrics,
-    is_top: bool,
-    is_bottom: bool,
-    is_thick_h: bool,
-) -> io::Result<()> {
-    let left_corner = if is_top {
-        metrics.top_left
-    } else if is_bottom {
-        metrics.bot_left
-    } else {
-        metrics.mid_left
-    };
-    let right_corner = if is_top {
-        metrics.top_right
-    } else if is_bottom {
-        metrics.bot_right
-    } else {
-        metrics.mid_right
-    };
-    stdout.queue(Print(left_corner))?;
-
-    for u in 0..8u8 {
-        let is_major_v = (u + 1) % 3 == 0;
-        let h = if is_thick_h {
-            metrics.sep.h_thick
-        } else {
-            metrics.sep.h_thin
+            Style::default().bg(bg).fg(Color::White)
         };
-        stdout.queue(Print(h.to_string().repeat(metrics.cell_width as usize)))?;
-
-        let cross = if is_top {
-            if is_major_v {
-                metrics.sep.top_thick
-            } else {
-                metrics.sep.top_thin
-            }
-        } else if is_bottom {
-            if is_major_v {
-                metrics.sep.bot_thick
-            } else {
-                metrics.sep.bot_thin
-            }
-        } else if is_thick_h {
-            if is_major_v {
-                metrics.sep.cross_thick_thick
-            } else {
-                metrics.sep.cross_thick_thin
-            }
-        } else if is_major_v {
-            metrics.sep.cross_thin_thick
-        } else {
-            metrics.sep.cross_thin_thin
-        };
-        stdout.queue(Print(cross))?;
+        spans.push(Span::styled(&btn.label, style));
+        spans.push(Span::raw(" "));
     }
+    spans.push(Span::styled("│", Style::default().fg(border)));
 
-    let h = if is_thick_h {
-        metrics.sep.h_thick
-    } else {
-        metrics.sep.h_thin
+    f.render_widget(
+        Paragraph::new(Line::from(spans)),
+        Rect::new(bar_x, y + 1, bar_w as u16, 1),
+    );
+
+    // 底行 ╰─╯
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(border)),
+        Rect::new(bar_x, y + 2, bar_w as u16, 1),
+    );
+}
+
+// ── 3D 立方体 ──
+
+fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
+    let area = layout.cube_area;
+    if area.width < 10 || area.height < 10 { return; }
+
+    // 绘制边框
+    let border_color = face_to_color(app.current_face);
+    let inner_w = area.width as usize - 2;
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(border_color)),
+        Rect::new(area.x, area.y, area.width, 1),
+    );
+    for row in 1..area.height.saturating_sub(1) {
+        f.render_widget(
+            Paragraph::new("│").style(Style::default().fg(border_color)),
+            Rect::new(area.x, area.y + row, 1, 1),
+        );
+        f.render_widget(
+            Paragraph::new("│").style(Style::default().fg(border_color)),
+            Rect::new(area.x + area.width - 1, area.y + row, 1, 1),
+        );
+    }
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(border_color)),
+        Rect::new(area.x, area.y + area.height - 1, area.width, 1),
+    );
+
+    // 内容区域（去掉边框）
+    let content_area = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
+
+    let cx = content_area.x as f64 + content_area.width as f64 / 2.0;
+    let cy = content_area.y as f64 + content_area.height as f64 / 2.0;
+    let scale_factor: f64 = app.settings.cube_scale.parse().unwrap_or(0.38);
+    // 终端字符高宽比约2:1，Y方向缩小以补偿
+    let scale_x = content_area.width as f64 * scale_factor;
+    let scale_y = content_area.height as f64 * scale_factor * 0.5;
+
+    let cos_y = app.cube_angle_y.cos();
+    let sin_y = app.cube_angle_y.sin();
+    let cos_x = app.cube_angle_x.cos();
+    let sin_x = app.cube_angle_x.sin();
+
+    // 8 vertices of a unit cube
+    let verts: [(f64, f64, f64); 8] = [
+        (-1.0, -1.0, -1.0), ( 1.0, -1.0, -1.0),
+        ( 1.0,  1.0, -1.0), (-1.0,  1.0, -1.0),
+        (-1.0, -1.0,  1.0), ( 1.0, -1.0,  1.0),
+        ( 1.0,  1.0,  1.0), (-1.0,  1.0,  1.0),
+    ];
+
+    // Project: rotate Y then X, with aspect ratio correction
+    let project = |x: f64, y: f64, z: f64| {
+        // Rotate around Y axis
+        let x1 = x * cos_y + z * sin_y;
+        let z1 = -x * sin_y + z * cos_y;
+        // Rotate around X axis
+        let y1 = y * cos_x - z1 * sin_x;
+        let z2 = y * sin_x + z1 * cos_x;
+        (cx + x1 * scale_x, cy - y1 * scale_y, z2)
     };
-    stdout.queue(Print(h.to_string().repeat(metrics.cell_width as usize)))?;
-    stdout.queue(Print(right_corner))?;
-    stdout.queue(Clear(ClearType::UntilNewLine))?;
-    Ok(())
-}
 
-fn print_cell_content(
-    stdout: &mut io::Stdout,
-    state: &CliState,
-    metrics: &Metrics,
-    u: u8,
-    v: u8,
-    line: u16,
-) -> io::Result<()> {
-    let colors = state.theme.colors();
-    let coord = state.current_face.to_cube(u, v);
-    let cell = state.game.grid.get(&coord);
-    let selected = state.cursor == (u, v);
-    let is_given = cell.map(|c| c.given).unwrap_or(false);
-    let value = cell.and_then(|c| c.user_value);
-    let is_error = value.map_or(false, |n| is_conflicting(state, coord, n));
+    let proj: Vec<(f64, f64, f64)> = verts.iter().map(|&(x, y, z)| project(x, y, z)).collect();
 
-    // Guidance 模式：判断当前格是否与选中格同行/列/宫，或有相同数字。
-    let (in_same_group, has_same_number) = if state.guidance && !selected {
-        let sel_coord = state.current_face.to_cube(state.cursor.0, state.cursor.1);
-        let same_row = state.cursor.1 == v;
-        let same_col = state.cursor.0 == u;
-        let same_box = state.cursor.0 / 3 == u / 3 && state.cursor.1 / 3 == v / 3;
-        let in_group = same_row || same_col || same_box;
+    // 6 faces: vertex indices + color
+    let faces: [([usize; 4], Face); 6] = [
+        ([4, 5, 6, 7], Face::Front),  // front (z=1)
+        ([0, 3, 2, 1], Face::Back),   // back (z=-1)
+        ([0, 4, 7, 3], Face::Left),   // left (x=-1)
+        ([1, 2, 6, 5], Face::Right),  // right (x=1)
+        ([3, 7, 6, 2], Face::Top),    // top (y=1)
+        ([0, 1, 5, 4], Face::Bottom), // bottom (y=-1)
+    ];
 
-        let sel_value = state.game.grid.get(&sel_coord).and_then(|c| c.user_value);
-        let same_num = value.is_some() && value == sel_value;
+    // Sort faces by average z (painter's algorithm, far first)
+    let mut sorted_faces: Vec<([usize; 4], Face)> = faces.to_vec();
+    sorted_faces.sort_by(|a, b| {
+        let za: f64 = a.0.iter().map(|&i| proj[i].2).sum::<f64>() / 4.0;
+        let zb: f64 = b.0.iter().map(|&i| proj[i].2).sum::<f64>() / 4.0;
+        za.partial_cmp(&zb).unwrap()
+    });
 
-        (in_group, same_num)
-    } else {
-        (false, false)
+    // Draw faces
+    for (indices, face) in &sorted_faces {
+        let color = face_to_color(*face);
+        let pts: Vec<(f64, f64)> = indices.iter().map(|&i| (proj[i].0, proj[i].1)).collect();
+
+        // Fill face with colored dots
+        let min_x = pts.iter().map(|p| p.0).fold(f64::MAX, f64::min);
+        let max_x = pts.iter().map(|p| p.0).fold(f64::MIN, f64::max);
+        let min_y = pts.iter().map(|p| p.1).fold(f64::MAX, f64::min);
+        let max_y = pts.iter().map(|p| p.1).fold(f64::MIN, f64::max);
+
+        for py in (min_y as u16)..=(max_y as u16) {
+            for px in (min_x as u16)..=(max_x as u16) {
+                if px < content_area.x || px >= content_area.x + content_area.width { continue; }
+                if py < content_area.y || py >= content_area.y + content_area.height { continue; }
+                if point_in_quad(px as f64, py as f64, &pts) {
+                    let style = if *face == app.current_face {
+                        Style::default().fg(color).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(color)
+                    };
+                    let ch = if *face == app.current_face { '●' } else { '░' };
+                    f.render_widget(
+                        Paragraph::new(ch.to_string()).style(style),
+                        Rect::new(px, py, 1, 1),
+                    );
+                }
+            }
+        }
+
+        // Draw edges
+        for i in 0..4 {
+            let (x1, y1) = pts[i];
+            let (x2, y2) = pts[(i + 1) % 4];
+            draw_line(f, x1, y1, x2, y2, color, content_area);
+        }
+    }
+
+    // Draw orbiting sphere - position on the face's center, projected outward
+    let face_center_3d = match app.current_face {
+        Face::Front  => (0.0, 0.0, 1.8),
+        Face::Back   => (0.0, 0.0, -1.8),
+        Face::Left   => (-1.8, 0.0, 0.0),
+        Face::Right  => (1.8, 0.0, 0.0),
+        Face::Top    => (0.0, 1.8, 0.0),
+        Face::Bottom => (0.0, -1.8, 0.0),
     };
+    let (sx, sy, _) = project(face_center_3d.0, face_center_3d.1, face_center_3d.2);
+    let sphere_color = face_to_color(app.current_face);
 
-    let mid_line = metrics.cell_height / 2;
-    let mut content: String = " ".repeat(metrics.cell_width as usize);
-    if line == mid_line {
-        if let Some(n) = value {
-            let s = ((b'0' + n) as char).to_string();
-            let padding = metrics.cell_width as usize;
-            let start = (padding - 1) / 2;
-            content.replace_range(start..start + 1, &s);
+    let sx_u = sx as u16;
+    let sy_u = sy as u16;
+    if sx_u >= content_area.x && sx_u < content_area.x + content_area.width
+        && sy_u >= content_area.y && sy_u < content_area.y + content_area.height {
+        f.render_widget(
+            Paragraph::new("◉").style(Style::default().fg(sphere_color).add_modifier(Modifier::BOLD)),
+            Rect::new(sx_u, sy_u, 1, 1),
+        );
+    }
+
+    // Face label - inside border at bottom
+    let lang = Lang::from_code(&app.settings.language);
+    let label = face_name(app.current_face, lang);
+    let label_x = area.x + area.width.saturating_sub(label.len() as u16) / 2;
+    let label_y = area.y + area.height.saturating_sub(1); // 底部边框上一行
+    if label_y > area.y {
+        f.render_widget(
+            Paragraph::new(label).style(Style::default().fg(face_to_color(app.current_face))),
+            Rect::new(label_x, label_y, label.len() as u16, 1),
+        );
+    }
+}
+
+fn point_in_quad(px: f64, py: f64, pts: &[(f64, f64)]) -> bool {
+    if pts.len() != 4 { return false; }
+    // Cross product method
+    let mut inside = true;
+    for i in 0..4 {
+        let (x1, y1) = pts[i];
+        let (x2, y2) = pts[(i + 1) % 4];
+        let cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
+        if cross > 0.0 { inside = false; break; }
+    }
+    if inside { return true; }
+    inside = true;
+    for i in 0..4 {
+        let (x1, y1) = pts[i];
+        let (x2, y2) = pts[(i + 1) % 4];
+        let cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
+        if cross < 0.0 { inside = false; break; }
+    }
+    inside
+}
+
+fn draw_line(f: &mut Frame, x1: f64, y1: f64, x2: f64, y2: f64, color: Color, bounds: Rect) {
+    let dx = (x2 - x1).abs();
+    let dy = (y2 - y1).abs();
+    let steps = dx.max(dy).ceil() as u16;
+    if steps == 0 { return; }
+
+    for i in 0..=steps {
+        let t = i as f64 / steps as f64;
+        let x = (x1 + (x2 - x1) * t) as u16;
+        let y = (y1 + (y2 - y1) * t) as u16;
+        if x >= bounds.x && x < bounds.x + bounds.width && y >= bounds.y && y < bounds.y + bounds.height {
+            f.render_widget(
+                Paragraph::new("·").style(Style::default().fg(color)),
+                Rect::new(x, y, 1, 1),
+            );
         }
     }
-
-    // 选中格且内容冲突时：红色字体，停止闪烁（始终显示数字）
-    if selected && is_error {
-        stdout
-            .queue(SetBackgroundColor(colors.selected_bg))?
-            .queue(SetForegroundColor(colors.error))?;
-    } else if selected && state.blink_on {
-        stdout
-            .queue(SetBackgroundColor(colors.selected_bg))?
-            .queue(SetForegroundColor(colors.selected_fg))?;
-    } else if selected {
-        stdout
-            .queue(SetBackgroundColor(Color::Grey))?
-            .queue(SetForegroundColor(Color::White))?;
-    } else if in_same_group && has_same_number {
-        // 同行列宫 + 同数字：蓝色背景
-        stdout
-            .queue(SetBackgroundColor(colors.guidance_same))?
-            .queue(SetForegroundColor(Color::White))?;
-    } else if in_same_group {
-        // 同行列宫：绿色背景
-        stdout
-            .queue(SetBackgroundColor(colors.guidance_group))?
-            .queue(SetForegroundColor(colors.fg))?;
-    } else if has_same_number {
-        // 仅同数字：蓝色背景
-        stdout
-            .queue(SetBackgroundColor(colors.guidance_same))?
-            .queue(SetForegroundColor(Color::White))?;
-    } else if is_error {
-        // 非选中格冲突：红色字体
-        stdout.queue(SetForegroundColor(colors.error))?;
-    } else if is_given {
-        stdout
-            .queue(SetAttribute(Attribute::Bold))?
-            .queue(SetForegroundColor(colors.given))?;
-    } else if value.is_some() {
-        stdout.queue(SetForegroundColor(colors.user))?;
-    } else {
-        stdout.queue(SetForegroundColor(colors.fg))?;
-    }
-
-    stdout.queue(Print(content))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
 }
 
-fn grid_separator_row(layout: &Layout, v: u8) -> u16 {
-    layout.grid_offset.1 + v as u16 * (3 + 1)
-}
+// ── 公共工具函数 ──
 
-fn grid_cell_row(layout: &Layout, v: u8, line: u16) -> u16 {
-    layout.grid_offset.1 + 1 + v as u16 * (3 + 1) + line
-}
-
-fn compute_grid_hash(state: &CliState) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    state.current_face.hash(&mut hasher);
-    for v in 0..9u8 {
-        for u in 0..9u8 {
-            let coord = state.current_face.to_cube(u, v);
-            if let Some(cell) = state.game.grid.get(&coord) {
-                coord.hash(&mut hasher);
-                cell.given.hash(&mut hasher);
-                cell.user_value.hash(&mut hasher);
-            }
-        }
-    }
-    hasher.finish()
-}
-
-fn format_timer(state: &CliState) -> String {
-    let elapsed = crate::total_elapsed(state);
-    let minutes = elapsed / 60;
-    let seconds = elapsed % 60;
-    format!("{:02}:{:02}", minutes, seconds)
-}
-
-fn is_conflicting(state: &CliState, coord: CubeCoord, value: u8) -> bool {
-    for other in coord.related() {
-        if other == coord {
-            continue;
-        }
-        if let Some(cell) = state.game.grid.get(&other) {
-            if cell.user_value == Some(value) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn face_name(face: Face) -> &'static str {
-    match face {
-        Face::Front => "F前",
-        Face::Back => "B后",
-        Face::Left => "L左",
-        Face::Right => "R右",
-        Face::Top => "T上",
-        Face::Bottom => "U下",
-    }
-}
-
-pub fn mode_label(mode: RenderMode) -> &'static str {
-    match mode {
-        RenderMode::Standard => "标准",
-        RenderMode::Monospace => "等距",
-    }
-}
-
-pub fn find_button_at(layout: &Layout, col: u16, row: u16) -> Option<ButtonId> {
+pub fn find_button_at(layout: &GameLayout, col: u16, row: u16) -> Option<ButtonId> {
     for btn in &layout.buttons {
         if row == btn.row && col >= btn.col && col < btn.col + btn.width {
             return Some(btn.id);
@@ -896,25 +838,215 @@ pub fn find_button_at(layout: &Layout, col: u16, row: u16) -> Option<ButtonId> {
     None
 }
 
-pub fn cell_at(layout: &Layout, metrics: &Metrics, col: u16, row: u16) -> Option<(u8, u8)> {
-    let gx = col.saturating_sub(layout.grid_offset.0);
-    let gy = row.saturating_sub(layout.grid_offset.1);
+pub fn cell_at(layout: &GameLayout, cw: usize, ch: usize, col: u16, row: u16) -> Option<(u8, u8)> {
+    let gx = col.saturating_sub(layout.grid_area.x);
+    let gy = row.saturating_sub(layout.grid_area.y);
 
-    if gy % (metrics.cell_height + 1) == 0 {
-        return None;
-    }
-    let v = (gy / (metrics.cell_height + 1)) as u8;
-    if v >= 9 {
-        return None;
-    }
+    if gy % (ch as u16 + 1) == 0 { return None; }
+    let v = (gy / (ch as u16 + 1)) as u8;
+    if v >= 9 { return None; }
 
-    if gx % (metrics.cell_width + 1) == 0 {
-        return None;
-    }
-    let u = (gx / (metrics.cell_width + 1)) as u8;
-    if u >= 9 {
-        return None;
-    }
+    if gx % (cw as u16 + 1) == 0 { return None; }
+    let u = (gx / (cw as u16 + 1)) as u8;
+    if u >= 9 { return None; }
 
     Some((u, v))
+}
+
+fn display_width(s: &str) -> usize {
+    s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
+}
+
+fn format_timer(app: &App) -> String {
+    let elapsed = total_elapsed(app);
+    format!("{:02}:{:02}", elapsed / 60, elapsed % 60)
+}
+
+fn is_wrong(app: &App, coord: sudokube_core::cube::CubeCoord, value: u8) -> bool {
+    app.game.solution.get(&coord).map_or(true, |&sol| sol != value)
+}
+
+fn face_name(face: Face, lang: Lang) -> &'static str {
+    match face {
+        Face::Front => i18n::t("game.face_front", lang),
+        Face::Back => i18n::t("game.face_back", lang),
+        Face::Left => i18n::t("game.face_left", lang),
+        Face::Right => i18n::t("game.face_right", lang),
+        Face::Top => i18n::t("game.face_top", lang),
+        Face::Bottom => i18n::t("game.face_bottom", lang),
+    }
+}
+
+fn face_to_color(face: Face) -> Color {
+    match face {
+        Face::Front => Color::Red,
+        Face::Back => Color::Blue,
+        Face::Left => Color::Green,
+        Face::Right => Color::Yellow,
+        Face::Top => Color::Magenta,
+        Face::Bottom => Color::Cyan,
+    }
+}
+
+pub fn parse_color(name: &str) -> Color {
+    match name {
+        "black" => Color::Black,
+        "darkgray" => Color::DarkGray,
+        "white" => Color::White,
+        "cyan" => Color::Cyan,
+        "green" => Color::Green,
+        "blue" => Color::Blue,
+        "magenta" => Color::Magenta,
+        "red" => Color::Red,
+        "yellow" => Color::Yellow,
+        "gray" => Color::Gray,
+        _ => Color::Cyan,
+    }
+}
+
+// ── 设置画面 ──
+
+fn draw_settings(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let lang = Lang::from_code(&app.settings.language);
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        area,
+    );
+
+    let box_w = 42u16;
+    let box_x = area.x + area.width.saturating_sub(box_w) / 2;
+    let fields = &app.settings_ui.fields;
+    let content_h = fields.len() as u16;
+    let box_h = content_h + 4; // title(2) + content + hint(1) + bottom(1)
+    let box_y = area.y + area.height.saturating_sub(box_h) / 2;
+
+    // 标题
+    let inner_w = box_w as usize - 2;
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(Color::Cyan)),
+        Rect::new(box_x, box_y, box_w, 1),
+    );
+
+    let title_line = format!("│{:^width$}│", i18n::t("settings.title", lang), width = inner_w);
+    f.render_widget(
+        Paragraph::new(title_line).style(Style::default().fg(Color::Cyan)),
+        Rect::new(box_x, box_y + 1, box_w, 1),
+    );
+
+    let sep = format!("╟{}╢", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(sep).style(Style::default().fg(Color::Cyan)),
+        Rect::new(box_x, box_y + 2, box_w, 1),
+    );
+
+    // 设置项
+    for (i, field) in fields.iter().enumerate() {
+        let row = box_y + 3 + i as u16;
+        let is_selected = i == app.settings_ui.selected;
+        let label_part = format!(" {} ", field.label);
+        let value_part = format!(" < {} >", field.value);
+        let padding = inner_w.saturating_sub(display_width(&label_part) + display_width(&value_part));
+        let line_text = format!("{}{}{}", label_part, " ".repeat(padding), value_part);
+
+        let style = if is_selected {
+            Style::default().bg(Color::White).fg(Color::Black)
+        } else {
+            Style::default().bg(Color::Black).fg(Color::White)
+        };
+
+        let line = Line::from(vec![
+            Span::styled("│", Style::default().fg(Color::Cyan)),
+            Span::styled(line_text, style),
+            Span::styled("│", Style::default().fg(Color::Cyan)),
+        ]);
+        f.render_widget(Paragraph::new(line), Rect::new(box_x, row, box_w, 1));
+    }
+
+    // 提示
+    let hint_row = box_y + 3 + content_h;
+    let hint = format!("│{:^width$}│", i18n::t("settings.hint", lang), width = inner_w);
+    f.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)),
+        Rect::new(box_x, hint_row, box_w, 1),
+    );
+
+    // 底部
+    let bot_row = hint_row + 1;
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
+        Rect::new(box_x, bot_row, box_w, 1),
+    );
+}
+
+// ── 生成进度画面 ──
+
+fn draw_generating(f: &mut Frame, app: &App) {
+    let area = f.area();
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        area,
+    );
+
+    let spinners = ['⠋', '⠙', '⠹', '⠸'];
+    let spinner_char = if let Some(ref gen_state) = app.generating {
+        spinners[gen_state.spinner as usize]
+    } else {
+        '⠋'
+    };
+
+    let elapsed = if let Some(ref gen_state) = app.generating {
+        gen_state.started.elapsed().as_secs()
+    } else {
+        0
+    };
+
+    let lang = Lang::from_code(&app.settings.language);
+    let text = format!("  {} {} {}s  ", spinner_char, i18n::t("msg.generating", lang), elapsed);
+    let bar_w = 40u16;
+    let x = area.x + area.width.saturating_sub(bar_w) / 2;
+    let y = area.y + area.height / 2;
+
+    let inner_w = bar_w as usize - 2;
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(Color::Cyan)),
+        Rect::new(x, y - 1, bar_w, 1),
+    );
+
+    // 进度条行
+    let progress_chars = "█▓▒░";
+    let anim_step = (elapsed as usize) % 4;
+    let filled = inner_w.min((elapsed as usize * 3).min(inner_w));
+    let mut bar = String::new();
+    for i in 0..inner_w {
+        if i < filled {
+            bar.push('█');
+        } else if i == filled {
+            bar.push(progress_chars.chars().nth(anim_step).unwrap());
+        } else {
+            bar.push('░');
+        }
+    }
+    let bar_line = format!("│{}│", bar);
+    f.render_widget(
+        Paragraph::new(bar_line).style(Style::default().fg(Color::Cyan)),
+        Rect::new(x, y, bar_w, 1),
+    );
+
+    // 文字行
+    let content = format!("│{:^width$}│", text, width = inner_w);
+    f.render_widget(
+        Paragraph::new(content).style(Style::default().fg(Color::White)),
+        Rect::new(x, y + 1, bar_w, 1),
+    );
+
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
+        Rect::new(x, y + 2, bar_w, 1),
+    );
 }
