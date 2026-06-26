@@ -2,6 +2,7 @@ mod i18n;
 mod input;
 mod render;
 mod save;
+mod widgets;
 
 use std::io;
 use std::sync::{Arc, Mutex};
@@ -248,8 +249,11 @@ pub struct App {
     pub cube_angle_x: f64,                  // 3D cube X-axis rotation angle
     pub victory_countdown: Option<Instant>, // Victory screen countdown
     pub import_buffer: String,              // Import input buffer
-    pub export_select: usize,               // 0=encrypted, 1=plaintext
+    pub export_select: usize,              // 0=encrypted, 1=plaintext
     pub action_log: VecDeque<String>,       // Recent action messages (newest at back)
+    pub show_settings_popup: bool,          // 显示设置弹窗
+    pub show_import_popup: bool,            // 显示导入弹窗
+    pub show_export_popup: bool,            // 显示导出弹窗
 }
 
 impl App {
@@ -281,6 +285,9 @@ impl App {
             import_buffer: String::new(),
             export_select: 0,
             action_log: VecDeque::new(),
+            show_settings_popup: false,
+            show_import_popup: false,
+            show_export_popup: false,
         }
     }
 
@@ -289,6 +296,9 @@ impl App {
             screen: AppScreen::Game,
             game,
             victory_countdown: None,
+            show_settings_popup: false,
+            show_import_popup: false,
+            show_export_popup: false,
             ..Self::new_menu()
         }
     }

@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Padding, Paragraph},
+    widgets::{Block, Borders, Clear, Padding, Paragraph},
 };
 use std::time::Instant;
 use sudokube_core::cube::Face;
@@ -28,37 +28,75 @@ const LOGO: &[&str] = &[
 
 // ── 类型 ──
 
+/// 游戏显示模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderMode {
+    /// 标准模式：完整显示所有面板
     Standard,
-    Monospace,
+    /// 精简模式：紧凑布局，隐藏次要信息
+    Compact,
+    /// 滚动模式：数独面板可滚动浏览
+    Scrollable,
 }
 
 impl RenderMode {
-    pub fn toggle(self) -> Self {
+    /// 切换到下一个模式
+    pub fn next(self) -> Self {
         match self {
-            RenderMode::Standard => RenderMode::Monospace,
-            RenderMode::Monospace => RenderMode::Standard,
+            RenderMode::Standard => RenderMode::Compact,
+            RenderMode::Compact => RenderMode::Scrollable,
+            RenderMode::Scrollable => RenderMode::Standard,
         }
     }
 
+    /// 获取模式名称
+    pub fn label(&self, lang: Lang) -> &'static str {
+        match self {
+            RenderMode::Standard => i18n::t("game.mode_standard", lang),
+            RenderMode::Compact => i18n::t("game.mode_compact", lang),
+            RenderMode::Scrollable => i18n::t("game.mode_scroll", lang),
+        }
+    }
+
+    /// 获取单元格宽度
     pub fn cell_width(self, settings: &AppSettings) -> usize {
         match self {
             RenderMode::Standard => settings.standard_cell_width,
-            RenderMode::Monospace => 3,
+            RenderMode::Compact => 3,
+            RenderMode::Scrollable => settings.standard_cell_width,
         }
     }
 
+    /// 获取单元格高度
     pub fn cell_height(self) -> usize {
-        3
+        match self {
+            RenderMode::Standard => 3,
+            RenderMode::Compact => 1,
+            RenderMode::Scrollable => 3,
+        }
+    }
+
+    /// 是否显示 3D 立方体
+    pub fn show_cube(self) -> bool {
+        match self {
+            RenderMode::Standard => true,
+            RenderMode::Compact => false,
+            RenderMode::Scrollable => true,
+        }
+    }
+
+    /// 是否显示左侧面板
+    pub fn show_left_panel(self) -> bool {
+        match self {
+            RenderMode::Standard => true,
+            RenderMode::Compact => false,
+            RenderMode::Scrollable => false,
+        }
     }
 }
 
 pub fn mode_label(mode: RenderMode, lang: Lang) -> &'static str {
-    match mode {
-        RenderMode::Standard => i18n::t("game.mode_standard", lang),
-        RenderMode::Monospace => i18n::t("game.mode_mono", lang),
-    }
+    mode.label(lang)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -145,6 +183,7 @@ pub struct GameLayout {
 // ── 主入口 ──
 
 pub fn draw(f: &mut Frame, app: &App) {
+    // 根据屏幕类型选择主画面
     match app.screen {
         AppScreen::Menu => draw_menu(f, app),
         AppScreen::Game => draw_game(f, app),
@@ -153,6 +192,26 @@ pub fn draw(f: &mut Frame, app: &App) {
         AppScreen::Victory => draw_victory(f, app),
         AppScreen::ExportSelect => draw_export_select(f, app),
         AppScreen::ImportInput => draw_import_input(f, app),
+    }
+
+    // 菜单界面显示弹窗
+    if app.screen == AppScreen::Menu {
+        if app.show_settings_popup {
+            draw_settings_popup(f, app);
+        } else if app.show_import_popup {
+            draw_import_popup(f, app);
+        } else if app.show_export_popup {
+            draw_export_popup(f, app);
+        }
+    }
+
+    // 游戏界面显示弹窗
+    if app.screen == AppScreen::Game {
+        if app.show_settings_popup {
+            draw_settings_popup(f, app);
+        } else if app.show_import_popup {
+            draw_import_popup(f, app);
+        }
     }
 }
 
@@ -475,102 +534,134 @@ fn draw_game(f: &mut Frame, app: &App) {
     draw_shop_panel(f, &layout, app, bg, border);
 }
 
-pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
+/// 检查终端尺寸是否足够显示完整界面
+pub fn check_terminal_size(area: Rect, app: &App) -> (bool, &'static str) {
     let cw = app.render_mode.cell_width(&app.settings);
     let ch = app.render_mode.cell_height();
+    let grid_w = (1 + 9 * (cw + 1)) as u16 + 4; // 加上边框和方向边
+    let grid_h = (1 + 9 * (ch + 1)) as u16 + 6; // 加上边框、消息和按钮
+
+    let min_w = grid_w + 30; // 左侧面板最小宽度
+    let min_h = grid_h;
+
+    if area.width < min_w || area.height < min_h {
+        (false, "Press M to switch mode")
+    } else {
+        (true, "")
+    }
+}
+
+pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
+    let mode = app.render_mode;
+    let cw = mode.cell_width(&app.settings);
+    let ch = mode.cell_height();
     let grid_inner_w = (1 + 9 * (cw + 1)) as u16;
     let grid_inner_h = (1 + 9 * (ch + 1)) as u16;
     let grid_h = grid_inner_h + 2; // 数独外框上下各 1
     let grid_w = grid_inner_w + 2; // 数独外框左右各 1
 
-    // 中间面板：方向边(1+1) + 网格(grid_h) + 消息(1) + 按钮(3) + 间隔(2)
+    // 方向边高度
     let dir_border: u16 = 1;
+    // 消息行和按钮栏
     let msg_h = 1u16;
-    let btn_h = 3u16;
+    let btn_h = if mode == RenderMode::Compact { 1 } else { 3 } as u16;
     let gap = 1u16;
-    // 网格外侧四周各留 1 个方向边
-    let center_panel_h = dir_border * 2 + grid_h + gap + msg_h + gap + btn_h;
-    // 中间面板的宽度 = 网格 + 两侧方向边
+
+    // 根据模式计算中间面板尺寸
+    let center_panel_h = match mode {
+        RenderMode::Compact => {
+            // 精简模式：只显示网格和一行按钮
+            grid_h + gap + btn_h
+        }
+        _ => {
+            // 标准和滚动模式
+            dir_border * 2 + grid_h + gap + msg_h + gap + btn_h
+        }
+    };
     let center_panel_w = grid_w + dir_border * 2;
 
-    // 最小/默认列宽
-    let _left_min_w: u16 = 22;
-    // 右侧：cude 面板需要 cube_width + 4（两侧方向边 + 两侧 panel 边框）
+    // 右侧 cube 面板
     let cube_w_cfg: u16 = app.settings.cube_width.parse().unwrap_or(20);
     let right_min_w: u16 = cube_w_cfg + 4;
 
-    // ── 纵向总布局：垂直居中，长度固定 ──
+    // 左侧面板
+    let left_min_w: u16 = 24;
+    let left_max_w: u16 = 30;
+
+    // 最小宽度需求
+    let min_w_sum = left_min_w.saturating_add(right_min_w).saturating_add(center_panel_w);
+
+    // ── 纵向布局 ──
     let outer_v = Layout::vertical([Constraint::Length(center_panel_h)])
         .flex(ratatui::layout::Flex::Center)
         .split(area);
     let v_chunk = outer_v[0];
 
-    // ── 横向三列布局：左侧自适应，中间:右侧 = 3:1 ──
-    // 策略：
-    //   - 屏幕过窄时（< center_panel_w + left_min + right_min）：左右列收缩到 0，中心保留
-    //   - 屏幕足够时：左侧取 [left_min, left_max] 之间的"自适应"宽度（不会占满整宽），
-    //     剩余空间按 3:1 分配给中间和右侧
-    let left_min_w: u16 = 24;
-    let left_max_w: u16 = 30;
-    let min_w_sum = left_min_w
-        .saturating_add(right_min_w)
-        .saturating_add(center_panel_w);
-    if area.width < min_w_sum {
-        // 太窄：直接退化为纯中心列
+    // 根据模式决定是否显示左右面板
+    let (left_chunk, center_chunk, right_chunk) = if !mode.show_left_panel() && !mode.show_cube() {
+        // 精简/滚动模式：只显示中间
+        let h_layout = Layout::horizontal([Constraint::Fill(1)])
+            .flex(ratatui::layout::Flex::Center);
+        let h_chunks = h_layout.split(v_chunk);
+        (Rect::default(), h_chunks[0], Rect::default())
+    } else if area.width < min_w_sum {
+        // 屏幕太窄：显示中间 + 可选的左右
         let h_layout = Layout::horizontal([Constraint::Length(center_panel_w)])
             .flex(ratatui::layout::Flex::Center);
         let h_chunks = h_layout.split(v_chunk);
-        let left_chunk = Rect::default();
-        let center_chunk = h_chunks[0];
-        let right_chunk = Rect::default();
-        return build_layout(
-            app,
-            left_chunk,
-            center_chunk,
-            right_chunk,
-            center_panel_w,
-            dir_border,
-            grid_h,
-            grid_w,
-            msg_h,
-            btn_h,
-            gap,
-            cube_w_cfg,
-            area,
-        );
-    }
+        (
+            Rect::default(),
+            h_chunks[0],
+            if mode.show_cube() && area.width > center_panel_w + right_min_w {
+                Rect::new(h_chunks[0].right(), 0, right_min_w, v_chunk.height)
+            } else {
+                Rect::default()
+            },
+        )
+    } else {
+        // 屏幕足够：使用 Flex 布局
+        let left_w = if mode.show_left_panel() {
+            area.width
+                .saturating_sub(center_panel_w + right_min_w)
+                .min(left_max_w)
+                .max(left_min_w)
+        } else {
+            0
+        };
 
-    // 左侧自适应：在 [left_min, left_max] 之间，超出则保持 left_max 不变
-    let total = area.width;
-    let left_actual = total
-        .saturating_sub(center_panel_w + right_min_w)
-        .min(left_max_w)
-        .max(left_min_w);
-    let side_total = total.saturating_sub(left_actual);
-    let middle_actual = side_total * 3 / 4;
-    let _right_actual = side_total - middle_actual;
+        let right_w = if mode.show_cube() { right_min_w } else { 0 };
 
-    // 最终约束：中间 ≥ center_panel_w，右侧 ≥ right_min_w
-    let center_w = middle_actual.max(center_panel_w);
-    let right_w = (total - left_actual - center_w).max(right_min_w);
+        let constraints = if mode.show_left_panel() && mode.show_cube() {
+            vec![
+                Constraint::Length(left_w),
+                Constraint::Fill(1),
+                Constraint::Length(right_w),
+            ]
+        } else if mode.show_left_panel() {
+            vec![Constraint::Length(left_w), Constraint::Fill(1)]
+        } else {
+            vec![Constraint::Fill(1), Constraint::Length(right_w)]
+        };
 
-    let h_layout = Layout::horizontal([
-        Constraint::Length(left_actual),
-        Constraint::Length(center_w),
-        Constraint::Length(right_w),
-    ])
-    .flex(ratatui::layout::Flex::Legacy);
-    let h_chunks = h_layout.split(v_chunk);
-    let left_chunk = h_chunks[0];
-    let center_chunk = h_chunks[1];
-    let right_chunk = h_chunks[2];
+        let chunks = Layout::horizontal(constraints)
+            .flex(ratatui::layout::Flex::Legacy)
+            .split(v_chunk);
+
+        if mode.show_left_panel() && mode.show_cube() {
+            (chunks[0], chunks[1], chunks[2])
+        } else if mode.show_left_panel() {
+            (chunks[0], chunks[1], Rect::default())
+        } else {
+            (Rect::default(), chunks[0], chunks[1])
+        }
+    };
 
     build_layout(
         app,
         left_chunk,
         center_chunk,
         right_chunk,
-        center_w,
+        center_panel_w,
         dir_border,
         grid_h,
         grid_w,
@@ -579,6 +670,7 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
         gap,
         cube_w_cfg,
         area,
+        mode,
     )
 }
 
@@ -597,6 +689,7 @@ fn build_layout(
     gap: u16,
     _cube_w: u16,
     area: Rect,
+    mode: RenderMode,
 ) -> GameLayout {
     // 新布局结构：center_column = sudoku_panel + btn_area (垂直排列)
     // sudoku_panel = 外框 → 中间层 ▉ → 内框 → 数独网格
@@ -1956,6 +2049,244 @@ fn draw_settings(f: &mut Frame, app: &App) {
     f.render_widget(
         Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
         Rect::new(box_x, bot_row, box_w, 1),
+    );
+}
+
+// ── 设置弹窗 ──
+
+fn draw_settings_popup(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let lang = Lang::from_code(&app.settings.language);
+
+    // Clear background
+    f.render_widget(Clear, area);
+
+    let fields = &app.settings_ui.fields;
+    let content_h = fields.len() as u16;
+    let box_w = 42u16;
+    let box_h = content_h + 4;
+
+    // Calculate popup dimensions
+    let popup_w = box_w;
+    let popup_h = box_h;
+
+    // Center the popup
+    let popup_x = area.x + area.width.saturating_sub(popup_w) / 2;
+    let popup_y = area.y + area.height.saturating_sub(popup_h) / 2;
+    let popup_rect = Rect::new(popup_x, popup_y, popup_w, popup_h);
+
+    // Render popup block
+    let inner_w = (box_w - 2) as usize;
+
+    // 顶部边框
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(Color::Cyan)),
+        Rect::new(popup_x, popup_y, popup_w, 1),
+    );
+
+    // 标题行
+    let title_line = bordered_line(i18n::t("settings.title", lang), inner_w, true);
+    f.render_widget(
+        Paragraph::new(title_line).style(Style::default().fg(Color::Cyan)),
+        Rect::new(popup_x, popup_y + 1, popup_w, 1),
+    );
+
+    // 分隔线
+    let sep = format!("╟{}╢", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(sep).style(Style::default().fg(Color::Cyan)),
+        Rect::new(popup_x, popup_y + 2, popup_w, 1),
+    );
+
+    // 设置项
+    for (i, field) in fields.iter().enumerate() {
+        let row = popup_y + 3 + i as u16;
+        let is_selected = i == app.settings_ui.selected;
+        let display_value = if field.label == "Naming Mode" {
+            i18n::t(&format!("naming.{}", field.value), lang).to_string()
+        } else {
+            field.value.clone()
+        };
+        let label_part = format!(" {} ", field.label);
+        let value_part = format!(" < {} >", display_value);
+        let padding = inner_w.saturating_sub(display_width(&label_part) + display_width(&value_part));
+        let line_text = format!("{}{}{}", label_part, " ".repeat(padding), value_part);
+
+        let style = if is_selected {
+            Style::default().bg(Color::White).fg(Color::Black)
+        } else {
+            Style::default().bg(Color::Black).fg(Color::White)
+        };
+
+        let line = Line::from(vec![
+            Span::styled("│", Style::default().fg(Color::Cyan)),
+            Span::styled(line_text, style),
+            Span::styled("│", Style::default().fg(Color::Cyan)),
+        ]);
+        f.render_widget(Paragraph::new(line), Rect::new(popup_x, row, popup_w, 1));
+    }
+
+    // 提示行
+    let hint_row = popup_y + 3 + content_h;
+    let hint = bordered_line(i18n::t("settings.hint", lang), inner_w, true);
+    f.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)),
+        Rect::new(popup_x, hint_row, popup_w, 1),
+    );
+
+    // 底部边框
+    let bot_row = hint_row + 1;
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
+        Rect::new(popup_x, bot_row, popup_w, 1),
+    );
+}
+
+// ── 导入弹窗 ──
+
+fn draw_import_popup(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let lang = Lang::from_code(&app.settings.language);
+
+    // Clear background
+    f.render_widget(Clear, area);
+
+    let box_w = 60u16;
+    let box_h = 8u16;
+
+    let popup_x = area.x + area.width.saturating_sub(box_w) / 2;
+    let popup_y = area.y + area.height.saturating_sub(box_h) / 2;
+    let popup_rect = Rect::new(popup_x, popup_y, box_w, box_h);
+
+    // Render popup block
+    let inner_w = (box_w - 2) as usize;
+
+    // 顶部边框
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(Color::Green)),
+        Rect::new(popup_x, popup_y, box_w, 1),
+    );
+
+    // 标题
+    let title = i18n::t("menu.import_all", lang);
+    let title_line = bordered_line(title, inner_w, true);
+    f.render_widget(
+        Paragraph::new(title_line).style(Style::default().fg(Color::Green)),
+        Rect::new(popup_x, popup_y + 1, box_w, 1),
+    );
+
+    // 分隔线
+    let sep = format!("╟{}╢", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(sep).style(Style::default().fg(Color::Green)),
+        Rect::new(popup_x, popup_y + 2, box_w, 1),
+    );
+
+    // 输入框
+    let buffer = &app.import_buffer;
+    let input_display = if buffer.is_empty() {
+        " ".to_string()
+    } else {
+        buffer.chars().take(inner_w - 2).collect()
+    };
+    let input_line = format!("│ {} {}│", input_display, " ".repeat(inner_w.saturating_sub(input_display.len() + 3)));
+    f.render_widget(
+        Paragraph::new(input_line).style(Style::default().bg(Color::Black).fg(Color::White)),
+        Rect::new(popup_x, popup_y + 3, box_w, 1),
+    );
+
+    // 提示
+    let hint_row = popup_y + 5;
+    let hint = bordered_line("Enter: Import  Esc: Cancel", inner_w, true);
+    f.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)),
+        Rect::new(popup_x, hint_row, box_w, 1),
+    );
+
+    // 底部边框
+    let bot_row = popup_y + box_h - 1;
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(Color::Green)),
+        Rect::new(popup_x, bot_row, box_w, 1),
+    );
+}
+
+// ── 导出弹窗 ──
+
+fn draw_export_popup(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let lang = Lang::from_code(&app.settings.language);
+
+    // Clear background
+    f.render_widget(Clear, area);
+
+    let box_w = 50u16;
+    let box_h = 10u16;
+
+    let popup_x = area.x + area.width.saturating_sub(box_w) / 2;
+    let popup_y = area.y + area.height.saturating_sub(box_h) / 2;
+
+    // 顶部边框
+    let inner_w = (box_w - 2) as usize;
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(Color::Yellow)),
+        Rect::new(popup_x, popup_y, box_w, 1),
+    );
+
+    // 标题
+    let title = i18n::t("menu.export_all", lang);
+    let title_line = bordered_line(title, inner_w, true);
+    f.render_widget(
+        Paragraph::new(title_line).style(Style::default().fg(Color::Yellow)),
+        Rect::new(popup_x, popup_y + 1, box_w, 1),
+    );
+
+    // 分隔线
+    let sep = format!("╟{}╢", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(sep).style(Style::default().fg(Color::Yellow)),
+        Rect::new(popup_x, popup_y + 2, box_w, 1),
+    );
+
+    // 选项
+    let options = ["Encrypted", "Plaintext"];
+    for (i, opt) in options.iter().enumerate() {
+        let row = popup_y + 3 + i as u16;
+        let is_selected = app.export_select == i;
+        let prefix = if is_selected { "▸ " } else { "  " };
+        let line_text = format!("{}{}", prefix, opt);
+        let style = if is_selected {
+            Style::default().bg(Color::White).fg(Color::Black)
+        } else {
+            Style::default().bg(Color::Black).fg(Color::White)
+        };
+        let line = Line::from(vec![
+            Span::styled("│", Style::default().fg(Color::Yellow)),
+            Span::styled(format!(" {} ", line_text), style),
+            Span::styled("│", Style::default().fg(Color::Yellow)),
+        ]);
+        f.render_widget(Paragraph::new(line), Rect::new(popup_x, row, box_w, 1));
+    }
+
+    // 提示
+    let hint_row = popup_y + 6;
+    let hint = bordered_line("↑↓: Select  Enter: Export  Esc: Cancel", inner_w, true);
+    f.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)),
+        Rect::new(popup_x, hint_row, box_w, 1),
+    );
+
+    // 底部边框
+    let bot_row = popup_y + box_h - 1;
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(Color::Yellow)),
+        Rect::new(popup_x, bot_row, box_w, 1),
     );
 }
 
