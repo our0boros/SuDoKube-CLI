@@ -1,138 +1,133 @@
 # SuDoKube
 
-3D 数独立方体 — 在立方体表面玩数独
+> **3D Sudoku on a Cube — Play Sudoku across six faces of a cube**
 
-## 简介
+[![Rust](https://img.shields.io/badge/Rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-SuDoKube 是一款终端 3D 数独游戏。玩家在由 6 个 9x9 面组成的立方体表面解题，每个面是标准数独，相邻面共享边和角点。游戏共 386 个格子，支持多语言、存档、导入导出等功能。
+SuDoKube is a terminal-based 3D Sudoku game where players solve puzzles across the six faces of a cube. Each face is a standard 9×9 Sudoku grid, and adjacent faces share edges and corner cells, creating a unique spatial puzzle experience.
 
-## 游戏规则
+---
 
-- 立方体表面共 386 个格子（6 面 x 81 - 共享边角）
-- 每个面内部满足标准数独规则：每行、每列、每个 3x3 宫格含 1-9 不重复
-- 相邻面的共享边数字一致，角点为同一数字
-- 填满所有格子即为胜利
+## Features
 
-## 安装与运行
+- **3D Cube Puzzle**: 386 cells across 6 interconnected faces
+- **Cross-face Constraints**: Adjacent faces share edges and corners, adding a new dimension to traditional Sudoku
+- **Multi-language Support**: English, 中文, 日本語 (auto-detected)
+- **Lively Naming**: Game IDs can use playful names like "Excited Panda #1" or simple numeric IDs
+- **Auto-save**: Progress is automatically saved to SQLite
+- **Import/Export**: Share puzzles via clipboard with XOR+Base64 encryption
+- **Difficulty Levels**: Easy, Medium, Hard with varying initial clues
+- **3D Preview**: Real-time cube preview showing current progress
+- **Theme Customization**: Adjust colors, sizes, and visual preferences
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Rust 1.75+ (2024 edition support)
+- Cargo
+
+### Build & Run
 
 ```bash
-# 构建
+# Clone the repository
+git clone https://github.com/yourusername/SuDoKube.git
+cd SuDoKube
+
+# Build release version
 cargo build --release
 
-# 运行 CLI 版本
+# Run the game
 cargo run -p sudokube-cli
 ```
 
-## 操作说明
+---
 
-### 主菜单
+## Controls
 
-| 按键 | 功能 |
-|------|------|
-| ↑/↓ | 选择菜单项 |
-| Enter | 确认选择 |
-| D | 删除选中的存档 |
-| E | 导出选中的对局到剪贴板 |
-| I | 导入对局 |
-| Q | 退出游戏 |
+### Main Menu
 
-### 游戏中
+| Key | Action |
+|-----|--------|
+| ↑/↓ | Navigate menu |
+| Enter | Confirm selection |
+| D | Delete selected save |
+| E | Export selected game |
+| I | Import game |
+| Q | Quit |
 
-| 按键 | 功能 |
-|------|------|
-| 1-9 | 填入数字 |
-| Backspace/Delete | 擦除数字 |
-| WASD | 移动光标 |
-| ↑/↓/←/→ | 切换面 |
-| M | 切换渲染模式（网格/紧凑） |
-| G | 切换辅助模式 |
-| H | 提示当前格 |
-| Z | 撤销 |
-| N | 新游戏 |
-| Q | 返回菜单 |
-| Alt+H | 调试：填充当前面所有空格（需开启 Debug Mode） |
+### In-Game
 
-### 设置
+| Key | Action |
+|-----|--------|
+| 1-9 | Input number |
+| Backspace/Delete | Erase number |
+| W/A/S/D | Move cursor |
+| ↑/↓/←/→ | Switch faces |
+| M | Toggle render mode (grid/compact) |
+| G | Toggle guide mode |
+| H | Show hint for current cell |
+| Z | Undo |
+| N | New game |
+| Q | Return to menu |
+| Alt+H | Debug: fill current face (requires Debug Mode) |
 
-在设置页面可配置：
+---
 
-- **Cell Width** - 格子宽度
-- **BG Color** - 背景色
-- **Border Color** - 边框色
-- **Guide-Group** - 同组辅助色
-- **Guide-Same** - 同数字辅助色
-- **Cube Scale** - 3D 预览缩放
-- **Show Cube** - 显示/隐藏 3D 预览
-- **Cube Width/Height** - 预览尺寸
-- **Debug Mode** - 调试模式
-- **Language** - 语言（中文/English/日本語）
-- **Naming Mode** - 命名模式（生动: 形容词-动物#ID / 数字: #ID）
-
-## 功能特性
-
-### 多语言支持
-
-支持中文、英文、日文三种语言，自动检测系统语言。
-
-### 生动命名
-
-游戏 ID 可使用生动命名模式，如 "兴奋的熊猫#1"、"勇敢的老虎#3"，词库包含 20 个形容词和 20 种动物。
-
-### 胜利弹窗
-
-完成对局后弹出胜利画面，显示 3 秒倒计时，也可按 Enter 立即返回菜单。
-
-### 胜利侧边栏
-
-主菜单右侧显示胜利记录面板，统计总局数和各难度胜场数。
-
-### 存档系统
-
-- 自动保存游戏进度
-- 菜单显示存档信息：名称、难度、剩余空格数、用时、状态
-- 已胜利的对局自动移至侧边栏
-
-### 导出/导入
-
-- **E 键** 导出当前选中的单局（加密格式）到剪贴板
-- **I 键** 导入对局，粘贴数据后按 Enter 确认
-- 菜单中的"导出全部"/"导入全部"用于批量操作
-- 加密导出使用 XOR + Base64 混淆
-- 导入时自动检测加密/明文模式，ID 冲突时自动顺延
-
-## 项目结构
+## Project Structure
 
 ```
 SuDoKube/
-├── core/           # 核心游戏逻辑库
+├── core/               # Core game logic library
 │   └── src/
-│       ├── cube.rs       # 立方体坐标、网格、面定义
-│       ├── game_state.rs # 游戏状态管理
-│       ├── puzzle.rs     # 谜题生成
-│       ├── wfc.rs        # 波函数折叠算法
-│       └── theme.rs      # 主题配置
-├── cli/            # 终端 UI 客户端
+│       ├── cube.rs       # Cube coordinates, grid, face definitions
+│       ├── game_state.rs # Game state management
+│       ├── puzzle.rs     # Puzzle generation & difficulty
+│       ├── wfc.rs        # Wave Function Collapse algorithm
+│       └── theme.rs      # Theme configuration
+├── cli/                # Terminal UI client
 │   └── src/
-│       ├── main.rs       # 应用入口、状态管理
-│       ├── render.rs     # UI 渲染（ratatui）
-│       ├── input.rs      # 事件处理
-│       ├── i18n.rs       # 多语言翻译
-│       └── save.rs       # 存档持久化（SQLite）
-└── assets/         # 资源文件（字体、图标）
+│       ├── main.rs       # Application entry point
+│       ├── render.rs     # UI rendering (ratatui)
+│       ├── input.rs      # Event handling
+│       ├── i18n.rs       # Internationalization
+│       ├── widgets.rs    # Custom TUI widgets
+│       └── save.rs       # Persistence (SQLite)
+├── assets/             # Fonts and icons
+└── doc/                # Documentation (Chinese)
 ```
 
-## 技术栈
+---
+
+## Technical Stack
 
 - **Rust** 2024 edition
-- **ratatui** - 终端 UI 框架
-- **crossterm** - 终端事件处理
-- **rusqlite** - SQLite 存档存储
-- **sudokube-core** - 核心游戏引擎
+- **ratatui** — Terminal UI framework
+- **crossterm** — Terminal input/output
+- **rusqlite** — SQLite database for saves
+- **chrono** — Date/time handling
 
-## 难度
+---
 
-| 难度 | 说明 |
-|------|------|
-| 简单 (Easy) | 更多初始提示 |
-| 中等 (Medium) | 标准难度 |
-| 困难 (Hard) | 较少初始提示 |
+## Difficulty Levels
+
+| Level | Description |
+|-------|-------------|
+| Easy | More initial clues given |
+| Medium | Standard difficulty |
+| Hard | Fewer initial clues |
+
+---
+
+## Documentation
+
+For detailed documentation in Chinese, please refer to [doc/README_zh.md](doc/README_zh.md).
+
+---
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
