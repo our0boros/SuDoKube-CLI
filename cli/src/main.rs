@@ -8,17 +8,17 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crossterm::event;
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use ratatui::Terminal;
 use sudokube_core::cube::{CubeCoord, Difficulty, Face};
 use sudokube_core::game_state::GameState;
 use sudokube_core::puzzle::generate_puzzle;
 use sudokube_core::wfc::WfcGenerator;
 
-use input::{handle_event, EventResult};
+use input::{EventResult, handle_event};
 use render::{ButtonId, RenderMode};
-use save::{save_game, GameRecord};
+use save::{GameRecord, save_game};
 use std::collections::VecDeque;
 
 /// 当前画面
@@ -36,18 +36,19 @@ pub enum AppScreen {
 /// 可配置项
 #[derive(Debug, Clone)]
 pub struct AppSettings {
-    pub standard_cell_width: usize,   // 奇数
-    pub bg_color: String,             // "black", "darkgray"
-    pub border_color: String,         // "cyan", "white", "green"
-    pub guide_group_color: String,    // "green", "blue", "magenta"
-    pub guide_same_color: String,     // "blue", "magenta", "red"
-    pub cube_scale: String,           // "0.3", "0.35", "0.4", "0.45", "0.5"
-    pub show_cube: String,            // "yes", "no"
-    pub cube_width: String,           // "16", "18", "20", "22", "24"
-    pub cube_height: String,          // "14", "16", "18", "20", "22"
-    pub debug_mode: String,           // "off", "on"
-    pub language: String,             // "zh", "en", "ja"
-    pub naming_mode: String,          // "vivid", "numeric"
+    pub standard_cell_width: usize, // 奇数
+    pub bg_color: String,           // "black", "darkgray"
+    pub border_color: String,       // "cyan", "white", "green"
+    pub guide_group_color: String,  // "green", "blue", "magenta"
+    pub guide_same_color: String,   // "blue", "magenta", "red"
+    pub cube_scale: String,         // "0.3", "0.35", "0.4", "0.45", "0.5"
+    pub show_cube: String,          // "yes", "no"
+    pub cube_width: String,         // "16", "18", "20", "22", "24"
+    pub cube_height: String,        // "14", "16", "18", "20", "22"
+    pub cube_aspect: String,        // "0.8", "1.0", "1.2", "1.5" — width/height of cube content
+    pub debug_mode: String,         // "off", "on"
+    pub language: String,           // "zh", "en", "ja"
+    pub naming_mode: String,        // "vivid", "numeric"
 }
 
 impl Default for AppSettings {
@@ -63,6 +64,7 @@ impl Default for AppSettings {
             show_cube: "yes".into(),
             cube_width: "20".into(),
             cube_height: "18".into(),
+            cube_aspect: "1.0".into(),
             debug_mode: "off".into(),
             language: lang,
             naming_mode: "vivid".into(),
@@ -75,18 +77,58 @@ impl AppSettings {
         let def = Self::default();
         Self {
             standard_cell_width: save::load_setting("standard_cell_width")
-                .ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(def.standard_cell_width),
-            bg_color: save::load_setting("bg_color").ok().flatten().unwrap_or(def.bg_color),
-            border_color: save::load_setting("border_color").ok().flatten().unwrap_or(def.border_color),
-            guide_group_color: save::load_setting("guide_group_color").ok().flatten().unwrap_or(def.guide_group_color),
-            guide_same_color: save::load_setting("guide_same_color").ok().flatten().unwrap_or(def.guide_same_color),
-            cube_scale: save::load_setting("cube_scale").ok().flatten().unwrap_or(def.cube_scale),
-            show_cube: save::load_setting("show_cube").ok().flatten().unwrap_or(def.show_cube),
-            cube_width: save::load_setting("cube_width").ok().flatten().unwrap_or(def.cube_width),
-            cube_height: save::load_setting("cube_height").ok().flatten().unwrap_or(def.cube_height),
-            debug_mode: save::load_setting("debug_mode").ok().flatten().unwrap_or(def.debug_mode),
-            language: save::load_setting("language").ok().flatten().unwrap_or(def.language),
-            naming_mode: save::load_setting("naming_mode").ok().flatten().unwrap_or(def.naming_mode),
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.standard_cell_width),
+            bg_color: save::load_setting("bg_color")
+                .ok()
+                .flatten()
+                .unwrap_or(def.bg_color),
+            border_color: save::load_setting("border_color")
+                .ok()
+                .flatten()
+                .unwrap_or(def.border_color),
+            guide_group_color: save::load_setting("guide_group_color")
+                .ok()
+                .flatten()
+                .unwrap_or(def.guide_group_color),
+            guide_same_color: save::load_setting("guide_same_color")
+                .ok()
+                .flatten()
+                .unwrap_or(def.guide_same_color),
+            cube_scale: save::load_setting("cube_scale")
+                .ok()
+                .flatten()
+                .unwrap_or(def.cube_scale),
+            show_cube: save::load_setting("show_cube")
+                .ok()
+                .flatten()
+                .unwrap_or(def.show_cube),
+            cube_width: save::load_setting("cube_width")
+                .ok()
+                .flatten()
+                .unwrap_or(def.cube_width),
+            cube_height: save::load_setting("cube_height")
+                .ok()
+                .flatten()
+                .unwrap_or(def.cube_height),
+            cube_aspect: save::load_setting("cube_aspect")
+                .ok()
+                .flatten()
+                .unwrap_or(def.cube_aspect),
+            debug_mode: save::load_setting("debug_mode")
+                .ok()
+                .flatten()
+                .unwrap_or(def.debug_mode),
+            language: save::load_setting("language")
+                .ok()
+                .flatten()
+                .unwrap_or(def.language),
+            naming_mode: save::load_setting("naming_mode")
+                .ok()
+                .flatten()
+                .unwrap_or(def.naming_mode),
         }
     }
 
@@ -100,6 +142,7 @@ impl AppSettings {
         let _ = save::save_setting("show_cube", &self.show_cube);
         let _ = save::save_setting("cube_width", &self.cube_width);
         let _ = save::save_setting("cube_height", &self.cube_height);
+        let _ = save::save_setting("cube_aspect", &self.cube_aspect);
         let _ = save::save_setting("debug_mode", &self.debug_mode);
         let _ = save::save_setting("language", &self.language);
         let _ = save::save_setting("naming_mode", &self.naming_mode);
@@ -110,9 +153,8 @@ fn detect_language() -> String {
     // 根据系统时区检测语言
     let tz = std::env::var("TZ").unwrap_or_default();
     let lang = std::env::var("LANG").unwrap_or_default();
-    let locale = std::env::var("LC_ALL").unwrap_or_else(|_| {
-        std::env::var("LC_CTYPE").unwrap_or_default()
-    });
+    let locale =
+        std::env::var("LC_ALL").unwrap_or_else(|_| std::env::var("LC_CTYPE").unwrap_or_default());
 
     let check = format!("{}{}{}", tz, lang, locale).to_lowercase();
     if check.contains("cn") || check.contains("zh") {
@@ -150,7 +192,7 @@ pub enum MenuItem {
 pub struct MenuState {
     pub items: Vec<MenuItem>,
     pub selected: usize,
-    pub victories: Vec<GameRecord>,  // completed games for sidebar
+    pub victories: Vec<GameRecord>, // completed games for sidebar
 }
 
 impl MenuState {
@@ -170,7 +212,11 @@ impl MenuState {
             }
         }
         let victories = save::load_completed(20).unwrap_or_default();
-        Self { items, selected: 0, victories }
+        Self {
+            items,
+            selected: 0,
+            victories,
+        }
     }
 }
 
@@ -198,12 +244,12 @@ pub struct App {
     pub settings: AppSettings,
     pub settings_ui: SettingsState,
     pub generating: Option<GeneratingState>,
-    pub cube_angle_y: f64,  // 3D cube Y-axis rotation angle
-    pub cube_angle_x: f64,  // 3D cube X-axis rotation angle
-    pub victory_countdown: Option<Instant>,  // Victory screen countdown
-    pub import_buffer: String,               // Import input buffer
-    pub export_select: usize,                // 0=encrypted, 1=plaintext
-    pub action_log: VecDeque<String>,        // Recent action messages (newest at back)
+    pub cube_angle_y: f64,                  // 3D cube Y-axis rotation angle
+    pub cube_angle_x: f64,                  // 3D cube X-axis rotation angle
+    pub victory_countdown: Option<Instant>, // Victory screen countdown
+    pub import_buffer: String,              // Import input buffer
+    pub export_select: usize,               // 0=encrypted, 1=plaintext
+    pub action_log: VecDeque<String>,       // Recent action messages (newest at back)
 }
 
 impl App {
@@ -212,7 +258,9 @@ impl App {
             screen: AppScreen::Menu,
             menu: MenuState::new(),
             game: GameState::new(
-                sudokube_core::cube::CubeGrid { cells: Default::default() },
+                sudokube_core::cube::CubeGrid {
+                    cells: Default::default(),
+                },
                 Default::default(),
                 Difficulty::Medium,
             ),
@@ -299,12 +347,56 @@ impl SettingsState {
     pub fn from_settings(s: &AppSettings) -> Self {
         let widths: Vec<String> = (3..=15).step_by(2).map(|n| n.to_string()).collect();
         let colors = vec!["black".into(), "darkgray".into()];
-        let border_colors = vec!["cyan".into(), "white".into(), "green".into(), "yellow".into()];
-        let guide_colors = vec!["green".into(), "blue".into(), "magenta".into(), "red".into()];
-        let cube_scales = vec!["0.3".into(), "0.35".into(), "0.38".into(), "0.4".into(), "0.45".into(), "0.5".into()];
+        let border_colors = vec![
+            "cyan".into(),
+            "white".into(),
+            "green".into(),
+            "yellow".into(),
+        ];
+        let guide_colors = vec![
+            "green".into(),
+            "blue".into(),
+            "magenta".into(),
+            "red".into(),
+        ];
+        let cube_scales = vec![
+            "0.3".into(),
+            "0.35".into(),
+            "0.38".into(),
+            "0.4".into(),
+            "0.45".into(),
+            "0.5".into(),
+        ];
         let yes_no = vec!["yes".into(), "no".into()];
-        let cube_widths = vec!["16".into(), "18".into(), "20".into(), "22".into(), "24".into(), "26".into(), "28".into(), "30".into()];
-        let cube_heights = vec!["14".into(), "16".into(), "18".into(), "20".into(), "22".into(), "24".into(), "26".into(), "28".into(), "30".into()];
+        let cube_widths = vec![
+            "16".into(),
+            "18".into(),
+            "20".into(),
+            "22".into(),
+            "24".into(),
+            "26".into(),
+            "28".into(),
+            "30".into(),
+        ];
+        let cube_heights = vec![
+            "14".into(),
+            "16".into(),
+            "18".into(),
+            "20".into(),
+            "22".into(),
+            "24".into(),
+            "26".into(),
+            "28".into(),
+            "30".into(),
+        ];
+        let cube_aspects = vec![
+            "0.7".into(),
+            "0.85".into(),
+            "1.0".into(),
+            "1.2".into(),
+            "1.4".into(),
+            "1.6".into(),
+        ];
         let debug_modes = vec!["off".into(), "on".into()];
         let languages = vec!["zh".into(), "en".into(), "ja".into()];
         let naming_modes = vec!["vivid".into(), "numeric".into()];
@@ -319,11 +411,15 @@ impl SettingsState {
             SettingsField::new("Show Cube", &s.show_cube, yes_no),
             SettingsField::new("Cube Width", &s.cube_width, cube_widths),
             SettingsField::new("Cube Height", &s.cube_height, cube_heights),
+            SettingsField::new("Cube Aspect", &s.cube_aspect, cube_aspects),
             SettingsField::new("Debug Mode", &s.debug_mode, debug_modes),
             SettingsField::new("Language", &s.language, languages),
             SettingsField::new("Naming Mode", &s.naming_mode, naming_modes),
         ];
-        Self { fields, selected: 0 }
+        Self {
+            fields,
+            selected: 0,
+        }
     }
 
     pub fn apply_to(&self, s: &mut AppSettings) {
@@ -336,9 +432,10 @@ impl SettingsState {
         s.show_cube = self.fields[6].value.clone();
         s.cube_width = self.fields[7].value.clone();
         s.cube_height = self.fields[8].value.clone();
-        s.debug_mode = self.fields[9].value.clone();
-        s.language = self.fields[10].value.clone();
-        s.naming_mode = self.fields[11].value.clone();
+        s.cube_aspect = self.fields[9].value.clone();
+        s.debug_mode = self.fields[10].value.clone();
+        s.language = self.fields[11].value.clone();
+        s.naming_mode = self.fields[12].value.clone();
     }
 }
 
@@ -377,7 +474,9 @@ fn main() -> io::Result<()> {
     result
 }
 
-fn run_app(mut terminal: Terminal<ratatui::backend::CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+fn run_app(
+    mut terminal: Terminal<ratatui::backend::CrosstermBackend<io::Stdout>>,
+) -> io::Result<()> {
     let mut app = App::new_menu();
     let mut last_blink = Instant::now();
 

@@ -1,17 +1,18 @@
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
-    MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ratatui::layout::Rect;
 use std::time::Duration;
 use sudokube_core::cube::{Difficulty, Face};
 
-use crate::{App, AppScreen, MenuItem, current_coord};
-use crate::render::{ButtonId, GameLayout, compute_game_layout_from_rect, find_button_at, cell_at, mode_label};
-use crate::save::delete_game;
 use crate::i18n::{self, Lang};
-use sudokube_core::game_state::GameState;
+use crate::render::{
+    ButtonId, GameLayout, cell_at, compute_game_layout_from_rect, find_button_at, mode_label,
+};
+use crate::save::delete_game;
+use crate::{App, AppScreen, MenuItem, current_coord};
 use std::time::Instant;
+use sudokube_core::game_state::GameState;
 
 pub enum EventResult {
     Continue,
@@ -45,10 +46,20 @@ fn handle_victory_event(app: &mut App, event: Event) -> EventResult {
 
 fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
     if let Event::Key(key) = event {
-        if key.kind != KeyEventKind::Press { return EventResult::Continue; }
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Continue;
+        }
         match key.code {
-            KeyCode::Up => { if app.export_select > 0 { app.export_select -= 1; } }
-            KeyCode::Down => { if app.export_select < 1 { app.export_select += 1; } }
+            KeyCode::Up => {
+                if app.export_select > 0 {
+                    app.export_select -= 1;
+                }
+            }
+            KeyCode::Down => {
+                if app.export_select < 1 {
+                    app.export_select += 1;
+                }
+            }
             KeyCode::Enter => {
                 // "Export All": export every stored game (finished + unfinished)
                 // as a single bundle string.
@@ -69,7 +80,9 @@ fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
                     }
                 }
             }
-            KeyCode::Esc => { app.screen = AppScreen::Menu; }
+            KeyCode::Esc => {
+                app.screen = AppScreen::Menu;
+            }
             _ => {}
         }
     }
@@ -78,7 +91,9 @@ fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
 
 fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
     if let Event::Key(key) = event {
-        if key.kind != KeyEventKind::Press { return EventResult::Continue; }
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Continue;
+        }
         match key.code {
             KeyCode::Enter => {
                 let data = app.import_buffer.trim().to_string();
@@ -175,20 +190,25 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                 };
             }
             KeyCode::Char('d') | KeyCode::Char('D') => {
-                if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned() {
+                if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned()
+                {
                     let _ = delete_game(r.id);
                     app.menu = crate::MenuState::new();
                 }
             }
             KeyCode::Char('e') | KeyCode::Char('E') => {
                 // Single game export
-                if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned() {
+                if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned()
+                {
                     let game = crate::continue_game(&r);
                     let encrypted = true;
                     let data = crate::save::export_game(&game, encrypted);
                     if crate::save::copy_to_clipboard(&data) {
                         let lang = Lang::from_code(&app.settings.language);
-                        app.set_message(i18n::t("export.copied", lang), std::time::Duration::from_secs(2));
+                        app.set_message(
+                            i18n::t("export.copied", lang),
+                            std::time::Duration::from_secs(2),
+                        );
                     }
                 }
             }
@@ -334,7 +354,11 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         KeyCode::Char('g') | KeyCode::Char('G') => {
             app.guidance = !app.guidance;
             let lang = Lang::from_code(&app.settings.language);
-            let key = if app.guidance { "msg.guide_on" } else { "msg.guide_off" };
+            let key = if app.guidance {
+                "msg.guide_on"
+            } else {
+                "msg.guide_off"
+            };
             app.set_message(i18n::t(key, lang).to_string(), Duration::from_secs(2));
             app.push_log(i18n::t(key, lang), 50);
         }
@@ -366,7 +390,12 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             let coord = current_coord(app);
             app.game.set_value(coord, Some(value));
             app.push_log(
-                format!("Placed {} at R{}C{}", value, app.cursor.1 + 1, app.cursor.0 + 1),
+                format!(
+                    "Placed {} at R{}C{}",
+                    value,
+                    app.cursor.1 + 1,
+                    app.cursor.0 + 1
+                ),
                 50,
             );
             if app.game.check_completion() {
@@ -458,11 +487,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
     EventResult::Continue
 }
 
-fn handle_mouse(
-    app: &mut App,
-    layout: &GameLayout,
-    mouse: MouseEvent,
-) -> EventResult {
+fn handle_mouse(app: &mut App, layout: &GameLayout, mouse: MouseEvent) -> EventResult {
     let cw = app.render_mode.cell_width(&app.settings);
     let ch = app.render_mode.cell_height();
 
@@ -556,10 +581,12 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
 
 fn log_button_click(app: &mut App, btn: ButtonId) {
     let label = match btn {
-        ButtonId::Number(n) => return app.push_log(
-            format!("Placed {} at R{}C{}", n, app.cursor.1 + 1, app.cursor.0 + 1),
-            50,
-        ),
+        ButtonId::Number(n) => {
+            return app.push_log(
+                format!("Placed {} at R{}C{}", n, app.cursor.1 + 1, app.cursor.0 + 1),
+                50,
+            );
+        }
         ButtonId::Erase => "Erase",
         ButtonId::Hint => "Hint",
         ButtonId::Undo => "Undo",
@@ -626,40 +653,70 @@ fn move_on_surface(face: Face, cursor: (u8, u8), dx: i8, dy: i8) -> (Face, (u8, 
 
     match face {
         Face::Front => {
-            if nv < 0 { (Face::Bottom, (8, u as u8)) }
-            else if nv > 8 { (Face::Top, (u as u8, 8)) }
-            else if nu < 0 { (Face::Left, (8, v as u8)) }
-            else { (Face::Right, (v as u8, 8)) }
+            if nv < 0 {
+                (Face::Bottom, (8, u as u8))
+            } else if nv > 8 {
+                (Face::Top, (u as u8, 8))
+            } else if nu < 0 {
+                (Face::Left, (8, v as u8))
+            } else {
+                (Face::Right, (v as u8, 8))
+            }
         }
         Face::Back => {
-            if nv < 0 { (Face::Left, (0, u as u8)) }
-            else if nv > 8 { (Face::Right, (u as u8, 0)) }
-            else if nu < 0 { (Face::Bottom, (v as u8, 0)) }
-            else { (Face::Top, (v as u8, 0)) }
+            if nv < 0 {
+                (Face::Left, (0, u as u8))
+            } else if nv > 8 {
+                (Face::Right, (u as u8, 0))
+            } else if nu < 0 {
+                (Face::Bottom, (v as u8, 0))
+            } else {
+                (Face::Top, (v as u8, 0))
+            }
         }
         Face::Top => {
-            if nv < 0 { (Face::Back, (u as u8, 8)) }
-            else if nv > 8 { (Face::Front, (u as u8, 8)) }
-            else if nu < 0 { (Face::Left, (v as u8, 8)) }
-            else { (Face::Right, (8, v as u8)) }
+            if nv < 0 {
+                (Face::Back, (u as u8, 8))
+            } else if nv > 8 {
+                (Face::Front, (u as u8, 8))
+            } else if nu < 0 {
+                (Face::Left, (v as u8, 8))
+            } else {
+                (Face::Right, (8, v as u8))
+            }
         }
         Face::Bottom => {
-            if nv < 0 { (Face::Left, (u as u8, 0)) }
-            else if nv > 8 { (Face::Right, (0, u as u8)) }
-            else if nu < 0 { (Face::Back, (v as u8, 0)) }
-            else { (Face::Front, (v as u8, 0)) }
+            if nv < 0 {
+                (Face::Left, (u as u8, 0))
+            } else if nv > 8 {
+                (Face::Right, (0, u as u8))
+            } else if nu < 0 {
+                (Face::Back, (v as u8, 0))
+            } else {
+                (Face::Front, (v as u8, 0))
+            }
         }
         Face::Left => {
-            if nv < 0 { (Face::Bottom, (u as u8, 0)) }
-            else if nv > 8 { (Face::Top, (0, u as u8)) }
-            else if nu < 0 { (Face::Back, (0, v as u8)) }
-            else { (Face::Front, (0, v as u8)) }
+            if nv < 0 {
+                (Face::Bottom, (u as u8, 0))
+            } else if nv > 8 {
+                (Face::Top, (0, u as u8))
+            } else if nu < 0 {
+                (Face::Back, (0, v as u8))
+            } else {
+                (Face::Front, (0, v as u8))
+            }
         }
         Face::Right => {
-            if nv < 0 { (Face::Back, (8, u as u8)) }
-            else if nv > 8 { (Face::Front, (8, u as u8)) }
-            else if nu < 0 { (Face::Bottom, (v as u8, 8)) }
-            else { (Face::Top, (8, v as u8)) }
+            if nv < 0 {
+                (Face::Back, (8, u as u8))
+            } else if nv > 8 {
+                (Face::Front, (8, u as u8))
+            } else if nu < 0 {
+                (Face::Bottom, (v as u8, 8))
+            } else {
+                (Face::Top, (8, v as u8))
+            }
         }
     }
 }
@@ -667,28 +724,46 @@ fn move_on_surface(face: Face, cursor: (u8, u8), dx: i8, dy: i8) -> (Face, (u8, 
 fn switch_face(face: Face, dx: i8, dy: i8) -> Face {
     match face {
         Face::Front => match (dx, dy) {
-            (0, -1) => Face::Top, (0, 1) => Face::Bottom,
-            (-1, 0) => Face::Left, (1, 0) => Face::Right, _ => face,
+            (0, -1) => Face::Top,
+            (0, 1) => Face::Bottom,
+            (-1, 0) => Face::Left,
+            (1, 0) => Face::Right,
+            _ => face,
         },
         Face::Back => match (dx, dy) {
-            (0, -1) => Face::Top, (0, 1) => Face::Bottom,
-            (-1, 0) => Face::Right, (1, 0) => Face::Left, _ => face,
+            (0, -1) => Face::Top,
+            (0, 1) => Face::Bottom,
+            (-1, 0) => Face::Right,
+            (1, 0) => Face::Left,
+            _ => face,
         },
         Face::Top => match (dx, dy) {
-            (0, -1) => Face::Back, (0, 1) => Face::Front,
-            (-1, 0) => Face::Left, (1, 0) => Face::Right, _ => face,
+            (0, -1) => Face::Back,
+            (0, 1) => Face::Front,
+            (-1, 0) => Face::Left,
+            (1, 0) => Face::Right,
+            _ => face,
         },
         Face::Bottom => match (dx, dy) {
-            (0, -1) => Face::Front, (0, 1) => Face::Back,
-            (-1, 0) => Face::Left, (1, 0) => Face::Right, _ => face,
+            (0, -1) => Face::Front,
+            (0, 1) => Face::Back,
+            (-1, 0) => Face::Left,
+            (1, 0) => Face::Right,
+            _ => face,
         },
         Face::Left => match (dx, dy) {
-            (0, -1) => Face::Top, (0, 1) => Face::Bottom,
-            (-1, 0) => Face::Back, (1, 0) => Face::Front, _ => face,
+            (0, -1) => Face::Top,
+            (0, 1) => Face::Bottom,
+            (-1, 0) => Face::Back,
+            (1, 0) => Face::Front,
+            _ => face,
         },
         Face::Right => match (dx, dy) {
-            (0, -1) => Face::Top, (0, 1) => Face::Bottom,
-            (-1, 0) => Face::Front, (1, 0) => Face::Back, _ => face,
+            (0, -1) => Face::Top,
+            (0, 1) => Face::Bottom,
+            (-1, 0) => Face::Front,
+            (1, 0) => Face::Back,
+            _ => face,
         },
     }
 }

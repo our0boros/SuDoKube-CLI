@@ -132,11 +132,17 @@ pub fn load_history(limit: usize) -> Result<Vec<GameRecord>> {
 }
 
 pub fn load_unfinished(limit: usize) -> Result<Vec<GameRecord>> {
-    load_records("WHERE completed = 0 ORDER BY started_at DESC LIMIT ?1", limit)
+    load_records(
+        "WHERE completed = 0 ORDER BY started_at DESC LIMIT ?1",
+        limit,
+    )
 }
 
 pub fn load_completed(limit: usize) -> Result<Vec<GameRecord>> {
-    load_records("WHERE completed = 1 ORDER BY started_at DESC LIMIT ?1", limit)
+    load_records(
+        "WHERE completed = 1 ORDER BY started_at DESC LIMIT ?1",
+        limit,
+    )
 }
 
 fn load_records(where_clause: &str, limit: usize) -> Result<Vec<GameRecord>> {
@@ -209,14 +215,23 @@ pub fn deserialize_solution_from(data: &str, coords: &[CubeCoord]) -> HashMap<Cu
         .collect()
 }
 
-pub fn deserialize_grid_from(puzzle_data: &str, given_data: &str, coords: &[CubeCoord]) -> sudokube_core::cube::CubeGrid {
+pub fn deserialize_grid_from(
+    puzzle_data: &str,
+    given_data: &str,
+    coords: &[CubeCoord],
+) -> sudokube_core::cube::CubeGrid {
     use sudokube_core::cube::Cell;
     let mut cells = HashMap::new();
-    let given: HashMap<_, _> = coords.iter()
+    let given: HashMap<_, _> = coords
+        .iter()
         .zip(given_data.chars())
         .filter_map(|(c, ch)| {
             let v = ch as u8 - b'0';
-            if v >= 1 && v <= 9 { Some((*c, v)) } else { None }
+            if v >= 1 && v <= 9 {
+                Some((*c, v))
+            } else {
+                None
+            }
         })
         .collect();
     for (c, ch) in coords.iter().zip(puzzle_data.chars()) {
@@ -230,7 +245,14 @@ pub fn deserialize_grid_from(puzzle_data: &str, given_data: &str, coords: &[Cube
             None
         };
         let answer = given.get(c).copied().unwrap_or(v.max(1));
-        cells.insert(*c, Cell { answer, given: is_given, user_value });
+        cells.insert(
+            *c,
+            Cell {
+                answer,
+                given: is_given,
+                user_value,
+            },
+        );
     }
     sudokube_core::cube::CubeGrid { cells }
 }
@@ -246,7 +268,10 @@ pub fn delete_game(id: i64) -> Result<()> {
 const XOR_KEY: &[u8] = b"SuDoKube2024";
 
 fn xor_crypt(data: &[u8]) -> Vec<u8> {
-    data.iter().enumerate().map(|(i, &b)| b ^ XOR_KEY[i % XOR_KEY.len()]).collect()
+    data.iter()
+        .enumerate()
+        .map(|(i, &b)| b ^ XOR_KEY[i % XOR_KEY.len()])
+        .collect()
 }
 
 /// Decode an encrypted payload (base64 + XOR) back to the raw string.
@@ -264,7 +289,13 @@ pub fn export_game(state: &GameState, encrypted: bool) -> String {
     let answer_str = serialize_solution(&state.solution, &coords);
     let puzzle_str = state.grid.serialize(&coords);
     let given_str = serialize_given(&state.grid, &coords);
-    let raw = format!("SUDOKUBE|{}|{}|{}|{}", state.difficulty.as_str(), answer_str, puzzle_str, given_str);
+    let raw = format!(
+        "SUDOKUBE|{}|{}|{}|{}",
+        state.difficulty.as_str(),
+        answer_str,
+        puzzle_str,
+        given_str
+    );
     if encrypted {
         format!("SUDOKUBE!{}", base64_encode(&xor_crypt(raw.as_bytes())))
     } else {
@@ -315,11 +346,15 @@ pub fn import_games(data: &str) -> Option<Vec<(String, String, String, String)>>
     if let Some(rest) = raw.strip_prefix("SUDOKUBES|") {
         let parts: Vec<&str> = rest.split('|').collect();
         let count: usize = parts.first()?.parse().ok()?;
-        if parts.len() != 1 + count * 4 { return None; }
+        if parts.len() != 1 + count * 4 {
+            return None;
+        }
         let mut result = Vec::with_capacity(count);
         let mut idx = 1;
         for _ in 0..count {
-            if idx + 3 >= parts.len() { return None; }
+            if idx + 3 >= parts.len() {
+                return None;
+            }
             result.push((
                 parts[idx].to_string(),
                 parts[idx + 1].to_string(),
@@ -334,10 +369,15 @@ pub fn import_games(data: &str) -> Option<Vec<(String, String, String, String)>>
     // Single-game format: SUDOKUBE|<diff>|<ans>|<puz>|<giv>
     if let Some(rest) = raw.strip_prefix("SUDOKUBE|") {
         let parts: Vec<&str> = rest.splitn(4, '|').collect();
-        if parts.len() != 4 { return None; }
-        return Some(vec![
-            (parts[0].to_string(), parts[1].to_string(), parts[2].to_string(), parts[3].to_string()),
-        ]);
+        if parts.len() != 4 {
+            return None;
+        }
+        return Some(vec![(
+            parts[0].to_string(),
+            parts[1].to_string(),
+            parts[2].to_string(),
+            parts[3].to_string(),
+        )]);
     }
 
     None
