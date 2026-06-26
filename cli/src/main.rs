@@ -23,6 +23,29 @@ use sudokube_core::puzzle::generate_puzzle;
 use sudokube_core::wfc::WfcGenerator;
 
 use input::{EventResult, handle_event};
+
+/// 单元位置类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PositionKind {
+    /// 角点(顶点): 3 个轴坐标都处于边界 (0 或 8)
+    Corner,
+    /// 边: 恰好 2 个轴坐标处于边界
+    Edge,
+    /// 面中心: 恰好 1 个轴坐标处于边界
+    Center,
+}
+
+/// 判定 9x9x9 立方体中单元 (x, y, z) 的位置类型
+pub fn position_kind(x: u8, y: u8, z: u8) -> PositionKind {
+    let on_boundary = |v: u8| v == 0 || v == 8;
+    let count = [x, y, z].iter().filter(|&&v| on_boundary(v)).count();
+    match count {
+        3 => PositionKind::Corner,
+        2 => PositionKind::Edge,
+        1 => PositionKind::Center,
+        _ => PositionKind::Center, // 内部: 退化为面中心
+    }
+}
 use render::{ButtonId, RenderMode};
 use save::{GameRecord, save_game};
 use std::collections::VecDeque;
@@ -274,6 +297,14 @@ pub struct App {
     pub export_select: usize,               // 0=encrypted, 1=plaintext
     pub action_log: VecDeque<String>,       // Recent action messages (newest at back)
     pub overflow_notice_elapsed: Option<Instant>, // Until when to suppress overflow mode-switch notice
+    /// 待删除的存档 ID(确认弹窗打开时设置)
+    pub confirm_delete_id: Option<i64>,
+    /// 每个数字的剩余数量(默认 54),用于防漏题
+    /// - 角点(顶点)位置: 放置时 -3
+    /// - 边位置: 放置时 -2
+    /// - 面中心位置: 放置时 -1
+    /// 擦除时反向加回
+    pub digit_remaining: [i32; 9],
 }
 
 impl App {
@@ -309,6 +340,8 @@ impl App {
             export_select: 0,
             action_log: VecDeque::new(),
             overflow_notice_elapsed: None,
+            confirm_delete_id: None,
+            digit_remaining: [54; 9],
         }
     }
 
@@ -320,6 +353,7 @@ impl App {
             ..Self::new_menu()
         };
         app.btn_page = 0;
+        app.recompute_digit_remaining();
         app
     }
 
@@ -333,6 +367,66 @@ impl App {
         self.action_log.push_back(line.into());
         while self.action_log.len() > max {
             self.action_log.pop_front();
+        }
+    }
+
+    /// 重算每个数字的剩余数量(默认 54):
+    /// - 角点(顶点)位置: 放置时 -3
+    /// - 边位置: 放置时 -2
+    /// - 面中心位置: 放置时 -1
+    /// 擦除时反向加回
+    pub fn recompute_digit_remaining(&mut self) {
+        // 默认 54
+        let mut counts = [54i32; 9];
+        // 遍历 game.grid 每个 cell,如果是用户填入则扣减
+        for (coord, cell) in self.game.grid.cells.iter() {
+            if let Some(value) = cell.user_value {
+                // 计算 cell 的位置类型
+                let (x, y, z) = (coord.x, coord.y, coord.z);
+                let kind = position_kind(x, y, z);
+                let decrement = match kind {
+                    PositionKind::Corner => 3,
+                    PositionKind::Edge => 2,
+                    PositionKind::Center => 1,
+                };
+                if (1..=9).contains(&value) {
+                    let idx = (value - 1) as usize;
+                    counts[idx] -= decrement;
+                }
+            }
+        }
+        self.digit_remaining = counts;
+    }
+
+    /// 当玩家在 (x,y,z) 位置放置/擦除数字时,调整对应数字的剩余数量
+    /// `old_value` 为 None 表示擦除,`new_value` 为 Some 表示放置
+    pub fn adjust_digit_remaining(
+        &mut self,
+        x: u8,
+        y: u8,
+        z: u8,
+        old_value: Option<u8>,
+        new_value: Option<u8>,
+    ) {
+        let kind = position_kind(x, y, z);
+        let decrement = match kind {
+            PositionKind::Corner => 3,
+            PositionKind::Edge => 2,
+            PositionKind::Center => 1,
+        };
+        // 擦除:加回
+        if let Some(v) = old_value {
+            if (1..=9).contains(&v) {
+                let idx = (v - 1) as usize;
+                self.digit_remaining[idx] += decrement;
+            }
+        }
+        // 放置:扣减
+        if let Some(v) = new_value {
+            if (1..=9).contains(&v) {
+                let idx = (v - 1) as usize;
+                self.digit_remaining[idx] -= decrement;
+            }
         }
     }
 

@@ -24,7 +24,11 @@ pub enum EventResult {
 }
 
 pub fn handle_event(app: &mut App, event: Event, area: Rect) -> EventResult {
-    // 当 Settings 弹窗可见时,所有事件都路由到 settings handler（弹窗覆盖菜单）
+    // 优先级 1: 删除确认弹窗
+    if app.confirm_delete_id.is_some() {
+        return handle_confirm_delete_event(app, event);
+    }
+    // 优先级 2: 当 Settings 弹窗可见时,所有事件都路由到 settings handler（弹窗覆盖菜单）
     if app.screen == AppScreen::Menu && app.settings_ui.visible {
         return handle_settings_event(app, event, area);
     }
@@ -37,6 +41,30 @@ pub fn handle_event(app: &mut App, event: Event, area: Rect) -> EventResult {
         AppScreen::ExportSelect => handle_export_select_event(app, event),
         AppScreen::ImportInput => handle_import_input_event(app, event),
     }
+}
+
+/// 删除确认弹窗: Y / Enter 确认, N / Esc 取消
+fn handle_confirm_delete_event(app: &mut App, event: Event) -> EventResult {
+    if let Event::Key(key) = event {
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Continue;
+        }
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                if let Some(id) = app.confirm_delete_id.take() {
+                    let _ = delete_game(id);
+                    app.menu = crate::MenuState::new();
+                    let lang = Lang::from_code(&app.settings.language);
+                    app.set_message(i18n::t("menu.deleted", lang), Duration::from_secs(2));
+                }
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                app.confirm_delete_id = None;
+            }
+            _ => {}
+        }
+    }
+    EventResult::Continue
 }
 
 fn handle_victory_event(app: &mut App, event: Event) -> EventResult {
@@ -111,37 +139,31 @@ fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
 }
 
 fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
-    // 粘贴超时检测: 连续输入(突发)超过 5 秒即放弃,避免长串黏贴一直右滑
+    // 粘贴 5s 行为: 5s 之前正常右滑显示,5s 后立即"完成"粘贴 — 停止接受后续 paste 事件,
+    // 缓冲内容冻结为最终结果,用户可按 Enter 提交。普通按键和 Backspace 仍可用。
     const PASTE_BURST_GAP: Duration = Duration::from_millis(100);
     const PASTE_MAX_DURATION: Duration = Duration::from_secs(5);
     let now = Instant::now();
 
-    let check_paste_timeout = |app: &mut App| -> bool {
-        // 返回 true 表示已超时并已处理
-        let in_burst = app
-            .import_last_input
-            .map(|t| now.duration_since(t) < PASTE_BURST_GAP)
-            .unwrap_or(false);
-        if in_burst && !app.import_buffer.is_empty() {
-            let started = app.import_paste_started.unwrap_or(now);
-            if now.duration_since(started) > PASTE_MAX_DURATION {
-                app.import_buffer.clear();
-                app.import_paste_started = None;
-                app.import_last_input = None;
-                app.screen = AppScreen::Menu;
-                let lang = Lang::from_code(&app.settings.language);
-                app.set_message(
-                    i18n::t("import.timeout", lang).to_string(),
-                    Duration::from_secs(3),
-                );
-                return true;
-            }
-        } else if !in_burst {
-            // 间隔较长 -> 重新开始一次计时
-            app.import_paste_started = Some(now);
+    // 检测是否已超过 5s:若是则标记 finalize,后续 paste 事件被忽略
+    let paste_finalized = if !app.import_buffer.is_empty() {
+        if let Some(started) = app.import_paste_started {
+            now.duration_since(started) > PASTE_MAX_DURATION
+        } else {
+            false
         }
+    } else {
         false
     };
+
+    // 非突发输入时重置 burst 起点
+    let in_burst_now = app
+        .import_last_input
+        .map(|t| now.duration_since(t) < PASTE_BURST_GAP)
+        .unwrap_or(false);
+    if !in_burst_now && !paste_finalized {
+        app.import_paste_started = Some(now);
+    }
 
     if let Event::Key(key) = event.clone() {
         if key.kind != KeyEventKind::Press {
@@ -152,8 +174,6 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
                 let data = app.import_buffer.trim().to_string();
                 let lang = Lang::from_code(&app.settings.language);
                 if let Some(games) = crate::save::import_games(&data) {
-                    // Import every game in the bundle. Leave id = None so the
-                    // DB auto-assigns sequential IDs (auto-increment on conflict).
                     let coords: Vec<sudokube_core::cube::CubeCoord> =
                         sudokube_core::cube::iter_surface_coords().collect();
                     let mut imported = 0usize;
@@ -196,9 +216,7 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
                 app.screen = AppScreen::Menu;
             }
             KeyCode::Char(c) => {
-                if check_paste_timeout(app) {
-                    return EventResult::Continue;
-                }
+                // 5s 后仍允许单个字符输入(覆盖式修正),不算黏贴
                 app.import_buffer.push(c);
                 app.import_last_input = Some(now);
             }
@@ -211,10 +229,11 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
     }
     // Handle paste event from terminal (Ctrl+V, right-click paste, etc.)
     if let Event::Paste(s) = event {
-        if check_paste_timeout(app) {
-            return EventResult::Continue;
+        if paste_finalized {
+            // 5s 后已 finalize,忽略后续 paste,内容定格
+        } else {
+            app.import_buffer.push_str(&s);
         }
-        app.import_buffer.push_str(&s);
         app.import_last_input = Some(now);
     }
     EventResult::Continue
@@ -261,8 +280,22 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
             KeyCode::Char('d') | KeyCode::Char('D') => {
                 if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned()
                 {
-                    let _ = delete_game(r.id);
-                    app.menu = crate::MenuState::new();
+                    // Alt+D: 直接删除,跳过确认
+                    if key.modifiers.contains(KeyModifiers::ALT) {
+                        let _ = delete_game(r.id);
+                        app.menu = crate::MenuState::new();
+                        let lang = Lang::from_code(&app.settings.language);
+                        app.set_message(i18n::t("menu.deleted", lang), Duration::from_secs(2));
+                    } else {
+                        // 普通 D: 弹出确认框
+                        app.confirm_delete_id = Some(r.id);
+                    }
+                }
+            }
+            KeyCode::Delete | KeyCode::Backspace => {
+                if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned()
+                {
+                    app.confirm_delete_id = Some(r.id);
                 }
             }
             KeyCode::Char('e') | KeyCode::Char('E') => {
@@ -512,7 +545,9 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             let coord = current_coord(app);
             if let Some(cell) = app.game.grid.get(&coord) {
                 if !cell.given {
+                    let old = cell.user_value;
                     app.game.set_value(coord, None);
+                    app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, None);
                     app.push_log("Erase", 50);
                 }
             }
@@ -548,13 +583,17 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         }
         KeyCode::Backspace | KeyCode::Delete => {
             let coord = current_coord(app);
+            let old = app.game.grid.get(&coord).and_then(|c| c.user_value);
             app.game.set_value(coord, None);
+            app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, None);
             app.push_log("Erase", 50);
         }
         KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
             let value = c as u8 - b'0';
             let coord = current_coord(app);
+            let old = app.game.grid.get(&coord).and_then(|c| c.user_value);
             app.game.set_value(coord, Some(value));
+            app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, Some(value));
             app.push_log(
                 format!(
                     "Placed {} at R{}C{}",
@@ -718,7 +757,9 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
     match btn {
         ButtonId::Number(n) => {
             let coord = current_coord(app);
+            let old = app.game.grid.get(&coord).and_then(|c| c.user_value);
             app.game.set_value(coord, Some(n));
+            app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, Some(n));
             if app.game.check_completion() {
                 app.game.completed = true;
                 app.screen = AppScreen::Victory;
@@ -731,7 +772,9 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
             let coord = current_coord(app);
             if let Some(cell) = app.game.grid.get(&coord) {
                 if !cell.given {
+                    let old = cell.user_value;
                     app.game.set_value(coord, None);
+                    app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, None);
                 }
             }
         }

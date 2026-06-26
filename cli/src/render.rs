@@ -193,6 +193,54 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             draw_import_overlay(f, app);
         }
     }
+
+    // 删除确认弹窗(最高优先级,覆盖所有屏幕)
+    if app.confirm_delete_id.is_some() {
+        draw_confirm_delete_overlay(f, app);
+    }
+}
+
+/// 删除确认弹窗
+fn draw_confirm_delete_overlay(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let lang = Lang::from_code(&app.settings.language);
+
+    let box_w = 36u16;
+    let box_h = 5u16;
+    let popup_area = Rect::new(
+        area.x + area.width.saturating_sub(box_w) / 2,
+        area.y + area.height.saturating_sub(box_h) / 2,
+        box_w,
+        box_h,
+    );
+
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::bordered()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Red))
+        .title(Span::styled(
+            format!(" {} ", i18n::t("menu.delete_confirm", lang)),
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ));
+    f.render_widget(block.clone(), popup_area);
+    let inner = block.inner(popup_area);
+    if inner.height < 2 || inner.width < 4 {
+        return;
+    }
+
+    let lines = vec![
+        Line::from(Span::styled(
+            i18n::t("menu.delete_confirm", lang),
+            Style::default().fg(Color::White),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            i18n::t("menu.delete_hint", lang),
+            Style::default().fg(Color::Yellow),
+        )),
+    ];
+    f.render_widget(Paragraph::new(lines), inner);
 }
 
 // ── 菜单画面 ──
