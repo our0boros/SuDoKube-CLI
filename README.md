@@ -5,6 +5,8 @@
 [![Rust](https://img.shields.io/badge/Rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+![image-20260626190931060](./README.assets/image-20260626190931060.png)
+
 SuDoKube is a terminal-based 3D Sudoku game where players solve puzzles across the six faces of a cube. Each face is a standard 9×9 Sudoku grid, and adjacent faces share edges and corner cells, creating a unique spatial puzzle experience.
 
 ---
@@ -22,6 +24,8 @@ SuDoKube is a terminal-based 3D Sudoku game where players solve puzzles across t
 - **Theme Customization**: Adjust colors, sizes, and visual preferences
 
 ---
+
+![image-20260626190945631](./README.assets/image-20260626190945631.png)
 
 ## Quick Start
 
