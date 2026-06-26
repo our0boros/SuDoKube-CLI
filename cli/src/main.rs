@@ -4,7 +4,10 @@ mod render;
 mod save;
 mod widgets;
 
-pub use widgets::{Button, ButtonState, ButtonTheme, THEME_PRIMARY, THEME_SUCCESS, THEME_DANGER, THEME_NEUTRAL};
+pub use widgets::{
+    Button, ButtonState, ButtonTheme, EdgeDecor, THEME_PRIMARY, THEME_SUCCESS, THEME_DANGER,
+    THEME_NEUTRAL,
+};
 
 use std::io;
 use std::sync::{Arc, Mutex};
@@ -172,6 +175,18 @@ fn detect_language() -> String {
 pub struct SettingsState {
     pub fields: Vec<SettingsField>,
     pub selected: usize,
+    /// 弹窗中可见区域的滚动偏移（用于内容过多时滚动）
+    pub scroll: u16,
+    /// 鼠标悬停的字段下标
+    pub hover_field: Option<usize>,
+    /// 鼠标悬停的方向（None / Left / Right）
+    pub hover_arrow: Option<SettingsArrow>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsArrow {
+    Left,
+    Right,
 }
 
 #[derive(Debug, Clone)]
@@ -253,6 +268,7 @@ pub struct App {
     pub import_buffer: String,              // Import input buffer
     pub export_select: usize,               // 0=encrypted, 1=plaintext
     pub action_log: VecDeque<String>,       // Recent action messages (newest at back)
+    pub overflow_notice_elapsed: Option<Instant>, // Until when to suppress overflow mode-switch notice
 }
 
 impl App {
@@ -284,6 +300,7 @@ impl App {
             import_buffer: String::new(),
             export_select: 0,
             action_log: VecDeque::new(),
+            overflow_notice_elapsed: None,
         }
     }
 
@@ -314,6 +331,11 @@ impl App {
             if Instant::now() >= until {
                 self.message.clear();
                 self.message_until = None;
+            }
+        }
+        if let Some(until) = self.overflow_notice_elapsed {
+            if Instant::now() >= until {
+                self.overflow_notice_elapsed = None;
             }
         }
     }
@@ -422,6 +444,9 @@ impl SettingsState {
         Self {
             fields,
             selected: 0,
+            scroll: 0,
+            hover_field: None,
+            hover_arrow: None,
         }
     }
 
@@ -516,6 +541,27 @@ fn run_app(
         }
 
         // 渲染
+        // 自动溢出检测：当内部元素（数独网格、按钮栏）超出可用区域时，
+        // 自动切换到 Scrollbar 模式以适应。
+        if app.screen == AppScreen::Game {
+            let area: ratatui::layout::Rect = terminal.size()?.into();
+            let needs_overflow_switch = render::needs_scrollbar_mode(area, &app);
+            if needs_overflow_switch && app.render_mode != render::RenderMode::Scrollbar {
+                let prev = app.render_mode;
+                app.render_mode = render::RenderMode::Scrollbar;
+                if prev != render::RenderMode::Scrollbar && app.overflow_notice_elapsed.is_none()
+                {
+                    let lang = crate::i18n::Lang::from_code(&app.settings.language);
+                    let label = render::mode_label(app.render_mode, lang);
+                    app.set_message(
+                        format!("⚠ {} ({})", i18n::t("msg.overflow_auto", lang), label),
+                        Duration::from_secs(3),
+                    );
+                    app.overflow_notice_elapsed = Some(Instant::now() + Duration::from_secs(3));
+                }
+            }
+        }
+
         terminal.draw(|f| render::draw(f, &app))?;
 
         // 事件处理

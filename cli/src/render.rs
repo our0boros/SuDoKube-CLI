@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Padding, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 use std::time::Instant;
 use sudokube_core::cube::Face;
@@ -87,6 +87,9 @@ pub struct ButtonLayout {
     pub col: u16,
     pub row: u16,
     pub width: u16,
+    pub height: u16,
+    /// 按钮主题（用于自定义 Widget 渲染）。
+    pub theme: crate::ButtonTheme,
 }
 
 /// 游戏画面布局（三列式：左 = 控制面板，中间 = 数独网格，右 = 3D 立方体 / 预留）。
@@ -686,11 +689,11 @@ fn build_layout(
     let navigator_panel = left_parts[1];
     let logs_panel = left_parts[2];
 
-    // ── 右列：3D 立方体面板 / 商店 ──
+    // ── 右列：3D 立方体面板(削减一半) / 商店 ──
     let right_layout = Layout::vertical([
-        Constraint::Fill(1),
+        Constraint::Percentage(50),
         Constraint::Length(1),
-        Constraint::Length(4),
+        Constraint::Min(4),
     ]);
     let right_parts = right_layout.split(right_chunk);
     let cube_outer_frame = right_parts[0];
@@ -753,52 +756,56 @@ fn build_layout(
     let cube_area = Rect::new(cube_x, cube_y, cube_area_w, cube_area_h);
 
     // ── 按钮定义（使用自定义 Button Widget）──
-    let btn_defs: Vec<(String, ButtonId, u16)> = (1..=9u8)
+    let btn_defs: Vec<(String, ButtonId, u16, crate::ButtonTheme)> = (1..=9u8)
         .map(|n| {
             let label = format!("[{}]", n);
             let w = label.chars().count() as u16;
-            (label, ButtonId::Number(n), w)
+            (label, ButtonId::Number(n), w, crate::THEME_PRIMARY)
         })
         .chain(
             [
-                ("[X]Erase", ButtonId::Erase),
-                ("[H]Hint", ButtonId::Hint),
-                ("[Z]Undo", ButtonId::Undo),
-                ("[G]Guide", ButtonId::ToggleGuidance),
-                ("[M]Mode", ButtonId::ToggleMode),
-                ("[Q]Menu", ButtonId::Quit),
+                ("[X]Erase", ButtonId::Erase, crate::THEME_NEUTRAL),
+                ("[H]Hint", ButtonId::Hint, crate::THEME_SUCCESS),
+                ("[Z]Undo", ButtonId::Undo, crate::THEME_NEUTRAL),
+                ("[G]Guide", ButtonId::ToggleGuidance, crate::THEME_NEUTRAL),
+                ("[M]Mode", ButtonId::ToggleMode, crate::THEME_NEUTRAL),
+                ("[Q]Menu", ButtonId::Quit, crate::THEME_DANGER),
             ]
             .iter()
-            .map(|(label, id)| {
+            .map(|(label, id, theme)| {
                 let w = label.chars().count() as u16;
-                (label.to_string(), *id, w)
+                (label.to_string(), *id, w, *theme)
             }),
         )
         .collect();
 
-    // 按钮栏布局
-    let btn_block = Block::bordered()
-        .borders(Borders::ALL)
-        .padding(Padding::horizontal(1));
-    let btn_inner = btn_block.inner(btn_area);
-    let btn_row = btn_inner.y;
-
+    // 按钮栏布局 —— 整行无外边框，padding=1 列
+    let btn_inner = Rect {
+        x: btn_area.x + 1,
+        y: btn_area.y,
+        width: btn_area.width.saturating_sub(2),
+        height: btn_area.height,
+    };
     let total_btn_w: usize = btn_defs
         .iter()
-        .map(|(_, _, w)| *w as usize + 1)
+        .map(|(_, _, w, _)| *w as usize + 1)
         .sum::<usize>()
         .saturating_sub(1);
     let bar_x = btn_inner.x + btn_inner.width.saturating_sub(total_btn_w as u16) / 2;
+    let btn_row = btn_inner.y;
+    let btn_height = btn_inner.height;
 
     let mut col = bar_x;
     let mut buttons = Vec::new();
-    for (label, id, w) in btn_defs {
+    for (label, id, w, theme) in btn_defs {
         buttons.push(ButtonLayout {
             id,
             label,
             col,
             row: btn_row,
             width: w,
+            height: btn_height,
+            theme,
         });
         col += w + 1;
     }
@@ -1354,39 +1361,53 @@ fn draw_message(f: &mut Frame, layout: &GameLayout, app: &App, _bg: Color) {
     );
 }
 
-fn draw_button_bar(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
-    if layout.btn_area.width < 4 || layout.btn_area.height < 3 {
+fn draw_button_bar(f: &mut Frame, layout: &GameLayout, app: &App, _bg: Color, border: Color) {
+    if layout.btn_area.width < 4 || layout.btn_area.height < 1 {
         return;
     }
 
-    // Block 自带边框与内部 padding
-    let block = Block::bordered()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border))
-        .style(Style::default().bg(bg));
-    f.render_widget(block.clone(), layout.btn_area);
-
-    // 按钮渲染到 Block inner 区域
-    let inner = block.inner(layout.btn_area);
-    if inner.height == 0 || inner.width == 0 {
-        return;
-    }
-
-    // 内容行：用一行 Line 包含全部按钮，hover 时反色
-    let mut spans: Vec<Span> = Vec::with_capacity(layout.buttons.len() * 2);
-    for (i, btn) in layout.buttons.iter().enumerate() {
-        let is_hover = app.hover_button == Some(btn.id);
-        let style = if is_hover {
-            Style::default().bg(Color::White).fg(Color::Black)
-        } else {
-            Style::default().bg(bg).fg(Color::White)
-        };
-        if i > 0 {
-            spans.push(Span::raw(" "));
+    // 按钮栏两侧装饰（提示符），使用与边框同色
+    let deco_style = Style::default().fg(border).add_modifier(Modifier::BOLD);
+    if layout.btn_area.height >= 1 {
+        let left_x = layout.btn_area.x;
+        let right_x = layout.btn_area.x + layout.btn_area.width.saturating_sub(1);
+        let y = layout.btn_area.y + layout.btn_area.height / 2;
+        if right_x > left_x + 1 {
+            f.render_widget(
+                Paragraph::new("╶").style(deco_style),
+                Rect::new(left_x, y, 1, 1),
+            );
+            f.render_widget(
+                Paragraph::new("╴").style(deco_style),
+                Rect::new(right_x, y, 1, 1),
+            );
         }
-        spans.push(Span::styled(&btn.label, style));
     }
-    f.render_widget(Paragraph::new(Line::from(spans)), inner);
+
+    // 每个按钮独立渲染为自定义 Button widget
+    for btn in &layout.buttons {
+        let area = Rect::new(btn.col, btn.row, btn.width, btn.height);
+        if area.width == 0 || area.height == 0 {
+            continue;
+        }
+        let state = if app.hover_button == Some(btn.id) {
+            crate::ButtonState::Hovered
+        } else {
+            crate::ButtonState::Normal
+        };
+        let label = Line::from(btn.label.as_str());
+        let mut button = crate::Button::new(label)
+            .theme(btn.theme)
+            .state(state)
+            .border(true);
+        if btn.height >= 3 {
+            // 3D 风格（顶/底高光）
+        } else {
+            // 高度不足时关闭 border
+            button = button.border(false);
+        }
+        f.render_widget(button, area);
+    }
 }
 
 // ── 3D 立方体 ──
@@ -1859,7 +1880,129 @@ pub fn parse_color(name: &str) -> Color {
     }
 }
 
+/// 检测当前 RenderMode 下的数独网格是否超出可用区域。
+/// 若超出边框则建议切换为 `Scrollbar` 模式。
+pub fn needs_scrollbar_mode(area: Rect, app: &App) -> bool {
+    if app.render_mode == RenderMode::Scrollbar {
+        return false;
+    }
+    let cw = app.render_mode.cell_width(&app.settings);
+    let ch = app.render_mode.cell_height();
+    // 数独网格占用的最小尺寸
+    let grid_h = (1 + 9 * (ch + 1)) as u16;
+    let grid_w = (1 + 9 * (cw + 1)) as u16;
+    // 中间列最小宽度 = grid_w + 2*dir_border
+    let center_panel_w = grid_w + 2;
+    // 至少需要：中间列(grid_h + 4 方向边/边框) + 间距 1 + 按钮栏 3
+    let min_h: u16 = grid_h + 8;
+    // 列宽度判断
+    let min_w: u16 = center_panel_w + 24;
+    area.height < min_h || area.width < min_w
+}
+
 // ── 设置画面 ──
+
+/// 设置弹窗中各交互元素的位置（用于鼠标事件）
+pub struct SettingsPopupLayout {
+    pub popup_area: Rect,
+    #[allow(dead_code)]
+    pub content_area: Rect,
+    pub fields: Vec<SettingsFieldLayout>,
+}
+
+pub struct SettingsFieldLayout {
+    #[allow(dead_code)]
+    pub row_y: u16,
+    pub label_rect: Rect,
+    pub left_arrow_rect: Rect,
+    pub value_rect: Rect,
+    pub right_arrow_rect: Rect,
+}
+
+/// 计算设置弹窗的布局信息（必须与 `draw_settings_popup` 保持同步）
+pub fn compute_settings_popup_layout(area: Rect, app: &mut App) -> SettingsPopupLayout {
+    let total_fields = app.settings_ui.fields.len();
+    let desired_w = 46u16;
+    let min_content_h = 6u16;
+    let max_content_h = (area.height as i32 - 4).max(3) as u16;
+    let content_h = (total_fields as u16 + 2).clamp(min_content_h, max_content_h);
+    let box_h = content_h + 2 + 2;
+    let box_w = desired_w.min(area.width.saturating_sub(2).max(10));
+
+    let popup_area = Rect::new(
+        area.x + area.width.saturating_sub(box_w) / 2,
+        area.y + area.height.saturating_sub(box_h) / 2,
+        box_w,
+        box_h,
+    );
+
+    let block = Block::bordered().borders(Borders::ALL);
+    let inner = block.inner(popup_area);
+    let content_area = Rect::new(
+        inner.x,
+        inner.y,
+        inner.width,
+        inner.height.saturating_sub(1),
+    );
+
+    // 计算滚动位置
+    let visible_rows = content_area.height as i32;
+    let mut scroll = app.settings_ui.scroll as i32;
+    if (app.settings_ui.selected as i32) < scroll {
+        scroll = app.settings_ui.selected as i32;
+    }
+    if (app.settings_ui.selected as i32) >= scroll + visible_rows {
+        scroll = app.settings_ui.selected as i32 - visible_rows + 1;
+    }
+    if scroll < 0 {
+        scroll = 0;
+    }
+    let max_scroll = (total_fields as i32 - visible_rows).max(0);
+    if scroll > max_scroll {
+        scroll = max_scroll;
+    }
+    app.settings_ui.scroll = scroll as u16;
+
+    let lang = Lang::from_code(&app.settings.language);
+    let mut fields = Vec::new();
+    for (i, field) in app.settings_ui.fields.iter().enumerate() {
+        let row_in_view = i as i32 - scroll;
+        if row_in_view < 0 || row_in_view >= visible_rows {
+            continue;
+        }
+        let y = content_area.y + row_in_view as u16;
+        let display_value = if field.label == "Naming Mode" {
+            i18n::t(&format!("naming.{}", field.value), lang).to_string()
+        } else {
+            field.value.clone()
+        };
+        let label_text = format!(" {} ", field.label);
+        let label_w = display_width(&label_text);
+        let value_w = display_width(&display_value);
+        // 计算 left_pad 同 draw 逻辑
+        let inner_w = content_area.width as i32;
+        let left_pad = (inner_w - label_w as i32 - 1 - 1 - value_w as i32 - 1 - 1).max(0) as u16;
+        // 标签矩形
+        let label_x = content_area.x;
+        // 左侧装饰所在位置：label + left_pad
+        let left_arrow_x = label_x + label_w as u16 + left_pad;
+        let value_x = left_arrow_x + 2;
+        let right_arrow_x = value_x + value_w as u16 + 2;
+        fields.push(SettingsFieldLayout {
+            row_y: y,
+            label_rect: Rect::new(label_x, y, label_w as u16, 1),
+            left_arrow_rect: Rect::new(left_arrow_x, y, 1, 1),
+            value_rect: Rect::new(value_x, y, value_w as u16, 1),
+            right_arrow_rect: Rect::new(right_arrow_x, y, 1, 1),
+        });
+    }
+
+    SettingsPopupLayout {
+        popup_area,
+        content_area,
+        fields,
+    }
+}
 
 /// 设置弹窗（Popup 模式，叠加在游戏画面上）
 fn draw_settings_popup(f: &mut Frame, app: &App) {
@@ -1867,10 +2010,16 @@ fn draw_settings_popup(f: &mut Frame, app: &App) {
     let lang = Lang::from_code(&app.settings.language);
 
     // 弹窗尺寸
-    let box_w = 42u16;
     let fields = &app.settings_ui.fields;
-    let content_h = fields.len() as u16;
-    let box_h = content_h + 4; // title(2) + content + hint(1) + bottom(1)
+    let total_fields = fields.len();
+
+    // 期望弹窗大小（基于内容）
+    let desired_w = 46u16;
+    let min_content_h = 6u16; // 标题1 + 分隔1 + 内容至少6 + 提示1 + 上下边框2 = 11
+    let max_content_h = (area.height as i32 - 4).max(3) as u16; // 上下边框 + 提示共 4 行
+    let content_h = (total_fields as u16 + 2).clamp(min_content_h, max_content_h);
+    let box_h = content_h + 2 + 2; // 内容 + 上下边框(2) + 标题(1) + 提示(1)
+    let box_w = desired_w.min(area.width.saturating_sub(2).max(10));
 
     // 居中弹窗
     let popup_area = Rect::new(
@@ -1883,74 +2032,158 @@ fn draw_settings_popup(f: &mut Frame, app: &App) {
     // 清除背景
     f.render_widget(Clear, popup_area);
 
-    // 渲染弹窗
-    let inner_w = box_w as usize - 2;
+    // 弹窗主块
+    let block = Block::bordered()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(Span::styled(
+            format!(" {} ", i18n::t("settings.title", lang)),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ));
+    f.render_widget(block.clone(), popup_area);
+    let inner = block.inner(popup_area);
 
-    // 顶部边框
-    let top = format!("╭{}╮", "─".repeat(inner_w));
-    f.render_widget(
-        Paragraph::new(top).style(Style::default().fg(Color::Cyan)),
-        Rect::new(popup_area.x, popup_area.y, box_w, 1),
+    // 提示行
+    let hint_h = 1u16;
+    let content_area = Rect::new(
+        inner.x,
+        inner.y,
+        inner.width,
+        inner.height.saturating_sub(hint_h),
+    );
+    let hint_area = Rect::new(
+        inner.x,
+        inner.y + inner.height.saturating_sub(hint_h),
+        inner.width,
+        hint_h,
     );
 
-    // 标题
-    let title_line = bordered_line(i18n::t("settings.title", lang), inner_w, true);
-    f.render_widget(
-        Paragraph::new(title_line).style(Style::default().fg(Color::Cyan)),
-        Rect::new(popup_area.x, popup_area.y + 1, box_w, 1),
-    );
+    // 自动滚动：保证 selected 在可见区域内
+    let visible_rows = content_area.height as i32;
+    let mut scroll = app.settings_ui.scroll as i32;
+    if (app.settings_ui.selected as i32) < scroll {
+        scroll = app.settings_ui.selected as i32;
+    }
+    if (app.settings_ui.selected as i32) >= scroll + visible_rows {
+        scroll = app.settings_ui.selected as i32 - visible_rows + 1;
+    }
+    if scroll < 0 {
+        scroll = 0;
+    }
+    let max_scroll = (total_fields as i32 - visible_rows).max(0);
+    if scroll > max_scroll {
+        scroll = max_scroll;
+    }
 
-    // 分隔线
-    let sep = format!("╟{}╢", "─".repeat(inner_w));
-    f.render_widget(
-        Paragraph::new(sep).style(Style::default().fg(Color::Cyan)),
-        Rect::new(popup_area.x, popup_area.y + 2, box_w, 1),
-    );
-
-    // 设置项
+    // 渲染字段
     for (i, field) in fields.iter().enumerate() {
-        let row = popup_area.y + 3 + i as u16;
+        let row_in_view = i as i32 - scroll;
+        if row_in_view < 0 || row_in_view >= visible_rows {
+            continue;
+        }
+        let y = content_area.y + row_in_view as u16;
         let is_selected = i == app.settings_ui.selected;
+        let is_hover = app.settings_ui.hover_field == Some(i);
+
+        // 显示值
         let display_value = if field.label == "Naming Mode" {
             i18n::t(&format!("naming.{}", field.value), lang).to_string()
         } else {
             field.value.clone()
         };
-        let label_part = format!(" {} ", field.label);
-        let value_part = format!(" < {} >", display_value);
-        let padding =
-            inner_w.saturating_sub(display_width(&label_part) + display_width(&value_part));
-        let line_text = format!("{}{}{}", label_part, " ".repeat(padding), value_part);
 
-        let style = if is_selected {
-            Style::default().bg(Color::White).fg(Color::Black)
+        // 计算 ◁ / ▷ 边缘淡化
+        let at_min = field.option_index == 0;
+        let at_max = field.option_index + 1 >= field.options.len();
+        let hl_fg = if is_selected { Color::Black } else { Color::White };
+        let hl_bg = if is_selected { Color::White } else { Color::Black };
+        let decor_fg_normal = if is_selected || is_hover { Color::Black } else { Color::Cyan };
+        let decor_bg = if is_selected || is_hover { Color::Yellow } else { Color::Black };
+
+        // 标签部分
+        let label_text = format!(" {} ", field.label);
+        let label_w = display_width(&label_text);
+        let inner_w = content_area.width as i32;
+
+        // ◁ / 值 / ▷
+        let left_arrow_style = Style::default()
+            .fg(if at_min { decor_bg } else { decor_fg_normal })
+            .bg(decor_bg)
+            .add_modifier(Modifier::BOLD);
+        let right_arrow_style = Style::default()
+            .fg(if at_max { decor_bg } else { decor_fg_normal })
+            .bg(decor_bg)
+            .add_modifier(Modifier::BOLD);
+
+        let value_style = Style::default().fg(hl_fg).bg(hl_bg);
+        let label_style = if is_selected || is_hover {
+            Style::default().fg(Color::Black).bg(Color::Yellow)
         } else {
-            Style::default().bg(Color::Black).fg(Color::White)
+            Style::default().fg(Color::White).bg(Color::Black)
         };
 
-        let line = Line::from(vec![
-            Span::styled("│", Style::default().fg(Color::Cyan)),
-            Span::styled(line_text, style),
-            Span::styled("│", Style::default().fg(Color::Cyan)),
-        ]);
-        f.render_widget(Paragraph::new(line), Rect::new(popup_area.x, row, box_w, 1));
+        let mut spans: Vec<Span> = Vec::new();
+        spans.push(Span::styled(label_text, label_style));
+        let left_pad = (inner_w - label_w as i32 - 1 - 1 - display_width(&display_value) as i32 - 1 - 1).max(0) as usize;
+        if left_pad > 0 {
+            spans.push(Span::styled(" ".repeat(left_pad), label_style));
+        }
+        let left_hover = is_hover && app.settings_ui.hover_arrow == Some(crate::SettingsArrow::Left);
+        let right_hover = is_hover && app.settings_ui.hover_arrow == Some(crate::SettingsArrow::Right);
+        let left_sym = if left_hover { "◁" } else { "‹" };
+        let right_sym = if right_hover { "▷" } else { "›" };
+        // 仍然使用 ◁/▷ 但 hover 时加粗
+        let left_symbol = if left_hover { "◁" } else { "‹" };
+        let right_symbol = if right_hover { "▷" } else { "›" };
+        let la = if left_hover { Style::default().fg(Color::Red).bg(Color::Yellow).add_modifier(Modifier::BOLD) } else { left_arrow_style };
+        let ra = if right_hover { Style::default().fg(Color::Red).bg(Color::Yellow).add_modifier(Modifier::BOLD) } else { right_arrow_style };
+        let _ = (left_sym, right_sym); // suppress unused
+        spans.push(Span::styled(left_symbol, la));
+        spans.push(Span::styled(" ", label_style));
+        spans.push(Span::styled(display_value.clone(), value_style));
+        spans.push(Span::styled(" ", label_style));
+        spans.push(Span::styled(right_symbol, ra));
+        // 填充剩余
+        let used = label_w
+            + left_pad
+            + 1
+            + 1
+            + display_width(&display_value)
+            + 1
+            + 1;
+        if used < inner_w as usize {
+            spans.push(Span::styled(
+                " ".repeat(inner_w as usize - used),
+                label_style,
+            ));
+        }
+
+        f.render_widget(
+            Paragraph::new(Line::from(spans)),
+            Rect::new(content_area.x, y, content_area.width, 1),
+        );
     }
 
     // 提示
-    let hint_row = popup_area.y + 3 + content_h;
-    let hint = bordered_line(i18n::t("settings.hint", lang), inner_w, true);
     f.render_widget(
-        Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)),
-        Rect::new(popup_area.x, hint_row, box_w, 1),
+        Paragraph::new(i18n::t("settings.hint", lang))
+            .style(Style::default().fg(Color::DarkGray)),
+        hint_area,
     );
 
-    // 底部
-    let bot_row = hint_row + 1;
-    let bot = format!("╰{}╯", "─".repeat(inner_w));
-    f.render_widget(
-        Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
-        Rect::new(popup_area.x, bot_row, box_w, 1),
-    );
+    // 溢出检测：内容超过可见区域时显示 scrollbar
+    if (total_fields as i32) > visible_rows {
+        use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .thumb_style(Style::default().fg(Color::Cyan))
+            .track_style(Style::default().fg(Color::DarkGray));
+        let mut state = ScrollbarState::new(total_fields).position(scroll as usize);
+        f.render_stateful_widget(
+            scrollbar,
+            Rect::new(content_area.x + content_area.width.saturating_sub(1), content_area.y, 1, content_area.height),
+            &mut state,
+        );
+    }
 }
 
 fn draw_settings(f: &mut Frame, app: &App) {

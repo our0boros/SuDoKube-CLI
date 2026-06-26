@@ -1,14 +1,15 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::Line,
     widgets::Widget,
 };
 
 /// 按钮状态
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ButtonState {
+    #[default]
     Normal,
     Selected,
     Hovered,
@@ -53,12 +54,40 @@ pub const THEME_NEUTRAL: ButtonTheme = ButtonTheme {
 };
 
 /// 自定义按钮 Widget
+///
+/// 该 Widget 在 ratatui 的 `custom-widget` 示例基础上扩展，新增：
+/// - `edge` 选项：可在按钮左右两侧自动附加 `◁` / `▷` 装饰，
+///   装饰在不可用（edge faded）时前景色与背景色一致。
+/// - `compact` 模式：仅渲染单行，不绘制 ▔/▁ 上下边框。
+/// - `state` 与 `theme` 完全可定制，参考 `custom-widget` 示例。
 #[derive(Debug, Clone)]
 pub struct Button<'a> {
     pub label: Line<'a>,
     pub theme: ButtonTheme,
     pub state: ButtonState,
     pub show_border: bool,
+    /// 在按钮左侧渲染 `◁` 装饰
+    pub left_edge: Option<EdgeDecor>,
+    /// 在按钮右侧渲染 `▷` 装饰
+    pub right_edge: Option<EdgeDecor>,
+}
+
+/// 装饰图标（用于按钮左右侧 ◁ / ▷）。
+/// `faded = true` 时将前景色与背景色设为相同，达到"不可用"的视觉提示。
+#[derive(Debug, Clone, Copy)]
+pub struct EdgeDecor {
+    pub ch: char,
+    pub faded: bool,
+}
+
+impl EdgeDecor {
+    pub const fn new(ch: char) -> Self {
+        Self { ch, faded: false }
+    }
+    pub const fn faded(mut self) -> Self {
+        self.faded = true;
+        self
+    }
 }
 
 impl<'a> Button<'a> {
@@ -68,6 +97,8 @@ impl<'a> Button<'a> {
             theme: THEME_NEUTRAL,
             state: ButtonState::Normal,
             show_border: true,
+            left_edge: None,
+            right_edge: None,
         }
     }
 
@@ -86,6 +117,16 @@ impl<'a> Button<'a> {
         self
     }
 
+    pub const fn left_edge(mut self, decor: EdgeDecor) -> Self {
+        self.left_edge = Some(decor);
+        self
+    }
+
+    pub const fn right_edge(mut self, decor: EdgeDecor) -> Self {
+        self.right_edge = Some(decor);
+        self
+    }
+
     fn colors(&self) -> (Color, Color, Color, Color) {
         let theme = self.theme;
         match self.state {
@@ -94,6 +135,12 @@ impl<'a> Button<'a> {
             ButtonState::Hovered => (theme.highlight, theme.text, theme.shadow, theme.highlight),
             ButtonState::Active => (theme.background, theme.text, theme.highlight, theme.shadow),
         }
+    }
+
+    /// 计算按钮在区域内实际占用的列数（包含左右装饰）。
+    pub fn width(&self, area_width: u16) -> u16 {
+        let edges = self.left_edge.is_some() as u16 + self.right_edge.is_some() as u16;
+        area_width.saturating_sub(edges)
     }
 }
 
@@ -133,11 +180,35 @@ impl Widget for Button<'_> {
             }
         }
 
-        // 渲染标签居中
-        let label_width = self.label.width() as u16;
-        let label_x = area.x + (area.width.saturating_sub(label_width)) / 2;
+        // 装饰图标（左右边缘）—— 单独占用一格
+        if let Some(decor) = self.left_edge {
+            let fg = if decor.faded { background } else { highlight };
+            let style = Style::new().fg(fg).bg(background).add_modifier(Modifier::BOLD);
+            let mut tmp = [0u8; 4];
+            let sym = decor.ch.encode_utf8(&mut tmp);
+            buf[(area.left(), area.y + (area.height.saturating_sub(1)) / 2)]
+                .set_symbol(sym)
+                .set_style(style);
+        }
+        if let Some(decor) = self.right_edge {
+            let fg = if decor.faded { background } else { highlight };
+            let style = Style::new().fg(fg).bg(background).add_modifier(Modifier::BOLD);
+            let mut tmp = [0u8; 4];
+            let sym = decor.ch.encode_utf8(&mut tmp);
+            buf[(area.right().saturating_sub(1), area.y + (area.height.saturating_sub(1)) / 2)]
+                .set_symbol(sym)
+                .set_style(style);
+        }
+
+        // 标签居中（避开左右装饰）
+        let label_x = area.x
+            + self.left_edge.is_some() as u16
+            + (self.width(area.width).saturating_sub(self.label.width() as u16)) / 2;
         let label_y = area.y + (area.height.saturating_sub(1)) / 2;
 
-        buf.set_line(label_x, label_y, &self.label, area.width);
+        let max_label_w = self
+            .width(area.width)
+            .saturating_sub((self.label.width() as u16).saturating_sub(self.width(area.width)));
+        buf.set_line(label_x, label_y, &self.label, area.width.max(max_label_w));
     }
 }

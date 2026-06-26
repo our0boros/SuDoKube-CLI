@@ -80,6 +80,7 @@ tr_map! {
     "msg.guide_off" => { zh: "辅助模式已关闭", en: "Guide mode OFF", ja: "ガイドモード OFF" },
     "msg.mode_switched" => { zh: "已切换为 {} 模式", en: "Switched to {} mode", ja: "{}モードに切替" },
     "msg.saved" => { zh: "设置已保存", en: "Settings saved", ja: "設定保存済み" },
+    "msg.overflow_auto" => { zh: "内容超出边框, 已自动切换为滚动模式", en: "Content overflow, auto-switched to scrollbar mode", ja: "内容が枠を超えたため、スクロールﾓｰﾄﾞに自動切替" },
 
     // Settings field labels
     "settings.cell_width" => { zh: "标准格宽", en: "Cell Width", ja: "セル幅" },

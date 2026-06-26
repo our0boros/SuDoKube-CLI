@@ -26,7 +26,7 @@ pub fn handle_event(app: &mut App, event: Event, area: Rect) -> EventResult {
     match app.screen {
         AppScreen::Menu => handle_menu_event(app, event, area),
         AppScreen::Game => handle_game_event(app, event, area),
-        AppScreen::Settings => handle_settings_event(app, event),
+        AppScreen::Settings => handle_settings_event(app, event, area),
         AppScreen::Generating => EventResult::Continue,
         AppScreen::Victory => handle_victory_event(app, event),
         AppScreen::ExportSelect => handle_export_select_event(app, event),
@@ -265,7 +265,7 @@ fn menu_item_at(app: &App, _col: u16, row: u16, area: Rect) -> Option<usize> {
     }
 }
 
-fn handle_settings_event(app: &mut App, event: Event) -> EventResult {
+fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> EventResult {
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
             KeyCode::Up => {
@@ -296,9 +296,79 @@ fn handle_settings_event(app: &mut App, event: Event) -> EventResult {
             }
             _ => {}
         },
+        Event::Mouse(mouse) => {
+            let layout = crate::render::compute_settings_popup_layout(area, app);
+            // 更新悬停状态
+            if matches!(mouse.kind, MouseEventKind::Moved) {
+                let mut found: Option<(usize, Option<crate::SettingsArrow>)> = None;
+                for (i, f) in layout.fields.iter().enumerate() {
+                    if rect_contains(f.left_arrow_rect, mouse.column, mouse.row) {
+                        found = Some((i, Some(crate::SettingsArrow::Left)));
+                        break;
+                    } else if rect_contains(f.right_arrow_rect, mouse.column, mouse.row) {
+                        found = Some((i, Some(crate::SettingsArrow::Right)));
+                        break;
+                    } else if rect_contains(f.label_rect, mouse.column, mouse.row)
+                        || rect_contains(f.value_rect, mouse.column, mouse.row)
+                    {
+                        found = Some((i, None));
+                        break;
+                    }
+                }
+                if let Some((i, arrow)) = found {
+                    app.settings_ui.hover_field = Some(i);
+                    app.settings_ui.hover_arrow = arrow;
+                } else {
+                    app.settings_ui.hover_field = None;
+                    app.settings_ui.hover_arrow = None;
+                }
+            }
+            if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                // 检查箭头点击
+                for (i, f) in layout.fields.iter().enumerate() {
+                    if rect_contains(f.left_arrow_rect, mouse.column, mouse.row) {
+                        app.settings_ui.selected = i;
+                        app.settings_ui.fields[i].cycle_prev();
+                        app.settings_ui.apply_to(&mut app.settings);
+                        app.settings.save_to_db();
+                        return EventResult::Continue;
+                    } else if rect_contains(f.right_arrow_rect, mouse.column, mouse.row) {
+                        app.settings_ui.selected = i;
+                        app.settings_ui.fields[i].cycle_next();
+                        app.settings_ui.apply_to(&mut app.settings);
+                        app.settings.save_to_db();
+                        return EventResult::Continue;
+                    } else if rect_contains(f.label_rect, mouse.column, mouse.row)
+                        || rect_contains(f.value_rect, mouse.column, mouse.row)
+                    {
+                        app.settings_ui.selected = i;
+                        return EventResult::Continue;
+                    }
+                }
+                // 点击弹窗外部：关闭
+                if !rect_contains(layout.popup_area, mouse.column, mouse.row) {
+                    app.settings.save_to_db();
+                    app.screen = AppScreen::Menu;
+                }
+            }
+            // 滚轮支持
+            if matches!(mouse.kind, MouseEventKind::ScrollUp) {
+                if app.settings_ui.selected > 0 {
+                    app.settings_ui.selected -= 1;
+                }
+            } else if matches!(mouse.kind, MouseEventKind::ScrollDown) {
+                if app.settings_ui.selected + 1 < app.settings_ui.fields.len() {
+                    app.settings_ui.selected += 1;
+                }
+            }
+        }
         _ => {}
     }
     EventResult::Continue
+}
+
+fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
+    x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
 }
 
 fn handle_game_event(app: &mut App, event: Event, area: Rect) -> EventResult {
