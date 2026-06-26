@@ -66,22 +66,22 @@ fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
                 let lang = Lang::from_code(&app.settings.language);
                 let records = crate::save::load_history(1000).unwrap_or_default();
                 if records.is_empty() {
-                    app.show_export_popup = false;
+                    app.screen = AppScreen::Menu;
                     app.set_message(i18n::t("export.empty", lang), Duration::from_secs(2));
                 } else {
                     let encrypted = app.export_select == 0;
                     let data = crate::save::export_records(&records, encrypted);
                     if crate::save::copy_to_clipboard(&data) {
-                        app.show_export_popup = false;
+                        app.screen = AppScreen::Menu;
                         app.set_message(i18n::t("export.copied", lang), Duration::from_secs(2));
                     } else {
-                        app.show_export_popup = false;
+                        app.screen = AppScreen::Menu;
                         app.set_message(i18n::t("export.fail", lang), Duration::from_secs(2));
                     }
                 }
             }
             KeyCode::Esc => {
-                app.show_export_popup = false;
+                app.screen = AppScreen::Menu;
             }
             _ => {}
         }
@@ -120,22 +120,23 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
                         }
                     }
                     if imported > 0 {
-                        app.show_import_popup = false;
-                        app.menu = crate::MenuState::new();
+                        *app = App::new_menu();
                         app.set_message(
                             format!("{} ({})", i18n::t("import.success", lang), imported),
                             Duration::from_secs(2),
                         );
                     } else {
                         app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));
+                        app.screen = AppScreen::Menu;
                     }
                 } else {
                     app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));
+                    app.screen = AppScreen::Menu;
                 }
             }
             KeyCode::Esc => {
-                app.show_import_popup = false;
                 app.import_buffer.clear();
+                app.screen = AppScreen::Menu;
             }
             KeyCode::Char(c) => {
                 app.import_buffer.push(c);
@@ -153,162 +154,7 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
     EventResult::Continue
 }
 
-// ── 弹窗事件处理 ──
-
-fn handle_settings_popup_event(app: &mut App, event: Event) -> EventResult {
-    if let Event::Key(key) = event {
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Continue;
-        }
-        match key.code {
-            KeyCode::Up => {
-                if app.settings_ui.selected > 0 {
-                    app.settings_ui.selected -= 1;
-                }
-            }
-            KeyCode::Down => {
-                if app.settings_ui.selected + 1 < app.settings_ui.fields.len() {
-                    app.settings_ui.selected += 1;
-                }
-            }
-            KeyCode::Left => {
-                let idx = app.settings_ui.selected;
-                app.settings_ui.fields[idx].cycle_prev();
-                app.settings_ui.apply_to(&mut app.settings);
-                app.settings.save_to_db();
-            }
-            KeyCode::Right => {
-                let idx = app.settings_ui.selected;
-                app.settings_ui.fields[idx].cycle_next();
-                app.settings_ui.apply_to(&mut app.settings);
-                app.settings.save_to_db();
-            }
-            KeyCode::Enter | KeyCode::Esc => {
-                app.settings.save_to_db();
-                app.show_settings_popup = false;
-            }
-            _ => {}
-        }
-    }
-    EventResult::Continue
-}
-
-fn handle_import_popup_event(app: &mut App, event: Event) -> EventResult {
-    if let Event::Key(key) = event {
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Continue;
-        }
-        match key.code {
-            KeyCode::Enter => {
-                let data = app.import_buffer.trim().to_string();
-                let lang = Lang::from_code(&app.settings.language);
-                if let Some(games) = crate::save::import_games(&data) {
-                    let coords: Vec<sudokube_core::cube::CubeCoord> =
-                        sudokube_core::cube::iter_surface_coords().collect();
-                    let mut imported = 0usize;
-                    for (diff_str, answer_str, puzzle_str, given_str) in games {
-                        let answer = crate::save::deserialize_solution_from(&answer_str, &coords);
-                        let puzzle_grid =
-                            crate::save::deserialize_grid_from(&puzzle_str, &given_str, &coords);
-                        let difficulty = match diff_str.as_str() {
-                            "easy" => Difficulty::Easy,
-                            "hard" => Difficulty::Hard,
-                            _ => Difficulty::Medium,
-                        };
-                        let mut game = GameState::new(puzzle_grid, answer, difficulty);
-                        game.id = None;
-                        if crate::save::save_game(&game).is_ok() {
-                            imported += 1;
-                        }
-                    }
-                    if imported > 0 {
-                        app.show_import_popup = false;
-                        app.menu = crate::MenuState::new();
-                        app.set_message(
-                            format!("{} ({})", i18n::t("import.success", lang), imported),
-                            Duration::from_secs(2),
-                        );
-                    } else {
-                        app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));
-                    }
-                } else {
-                    app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));
-                }
-            }
-            KeyCode::Esc => {
-                app.show_import_popup = false;
-                app.import_buffer.clear();
-            }
-            KeyCode::Char(c) => {
-                app.import_buffer.push(c);
-            }
-            KeyCode::Backspace => {
-                app.import_buffer.pop();
-            }
-            _ => {}
-        }
-    }
-    if let Event::Paste(s) = event {
-        app.import_buffer.push_str(&s);
-    }
-    EventResult::Continue
-}
-
-fn handle_export_popup_event(app: &mut App, event: Event) -> EventResult {
-    if let Event::Key(key) = event {
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Continue;
-        }
-        match key.code {
-            KeyCode::Up => {
-                if app.export_select > 0 {
-                    app.export_select -= 1;
-                }
-            }
-            KeyCode::Down => {
-                if app.export_select < 1 {
-                    app.export_select += 1;
-                }
-            }
-            KeyCode::Enter => {
-                let lang = Lang::from_code(&app.settings.language);
-                let records = crate::save::load_history(1000).unwrap_or_default();
-                if records.is_empty() {
-                    app.show_export_popup = false;
-                    app.set_message(i18n::t("export.empty", lang), Duration::from_secs(2));
-                } else {
-                    let encrypted = app.export_select == 0;
-                    let data = crate::save::export_records(&records, encrypted);
-                    if crate::save::copy_to_clipboard(&data) {
-                        app.show_export_popup = false;
-                        app.set_message(i18n::t("export.copied", lang), Duration::from_secs(2));
-                    } else {
-                        app.show_export_popup = false;
-                        app.set_message(i18n::t("export.fail", lang), Duration::from_secs(2));
-                    }
-                }
-            }
-            KeyCode::Esc => {
-                app.show_export_popup = false;
-            }
-            _ => {}
-        }
-    }
-    EventResult::Continue
-}
-
 fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
-    // 处理弹窗事件
-    if app.show_settings_popup {
-        return handle_settings_popup_event(app, event);
-    }
-    if app.show_import_popup {
-        return handle_import_popup_event(app, event);
-    }
-    if app.show_export_popup {
-        return handle_export_popup_event(app, event);
-    }
-
     match event {
         Event::Resize(_, _) => {}
         Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
@@ -329,16 +175,16 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                     MenuItem::NewGame(d) => EventResult::StartGenerating(d),
                     MenuItem::Continue(r) => EventResult::StartGame(crate::continue_game(&r)),
                     MenuItem::Settings => {
-                        app.show_settings_popup = true;
+                        app.screen = AppScreen::Settings;
                         EventResult::Continue
                     }
                     MenuItem::Export => {
-                        app.show_export_popup = true;
+                        app.screen = AppScreen::ExportSelect;
                         EventResult::Continue
                     }
                     MenuItem::Import => {
                         app.import_buffer.clear();
-                        app.show_import_popup = true;
+                        app.screen = AppScreen::ImportInput;
                         EventResult::Continue
                     }
                 };
@@ -446,7 +292,7 @@ fn handle_settings_event(app: &mut App, event: Event) -> EventResult {
             }
             KeyCode::Enter | KeyCode::Esc => {
                 app.settings.save_to_db();
-                app.show_settings_popup = false;
+                app.screen = AppScreen::Menu;
             }
             _ => {}
         },
@@ -490,7 +336,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             return EventResult::StartGenerating(app.game.difficulty);
         }
         KeyCode::Char('m') | KeyCode::Char('M') => {
-            app.render_mode = app.render_mode.next();
+            app.render_mode = app.render_mode.toggle();
             let lang = Lang::from_code(&app.settings.language);
             let label = mode_label(app.render_mode, lang);
             app.set_message(label.to_string(), Duration::from_secs(2));
@@ -718,7 +564,7 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
             );
         }
         ButtonId::ToggleMode => {
-            app.render_mode = app.render_mode.next();
+            app.render_mode = app.render_mode.toggle();
             let lang = Lang::from_code(&app.settings.language);
             app.set_message(
                 format!("{}", mode_label(app.render_mode, lang)),
