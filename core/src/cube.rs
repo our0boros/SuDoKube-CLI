@@ -38,6 +38,18 @@ impl Face {
         Face::Back,
     ];
 
+    /// 单字符代号：前/后/左/右/上/下
+    pub fn short_code(&self) -> &'static str {
+        match self {
+            Face::Front => "F",
+            Face::Back => "B",
+            Face::Left => "L",
+            Face::Right => "R",
+            Face::Top => "T",
+            Face::Bottom => "U",
+        }
+    }
+
     /// 将面局部坐标转换为唯一的立方体表面坐标。
     pub fn to_cube(&self, u: u8, v: u8) -> CubeCoord {
         match self {

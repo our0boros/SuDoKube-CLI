@@ -125,6 +125,15 @@ tr_map! {
     // Naming mode
     "naming.vivid" => { zh: "生动", en: "Vivid", ja: "鮮やか" },
     "naming.numeric" => { zh: "数字", en: "Numeric", ja: "数字" },
+
+    // Left/right column panels
+    "panel.status" => { zh: "状态", en: "Status", ja: "状態" },
+    "panel.navigator" => { zh: "导航", en: "Navigator", ja: "ﾅﾋﾞ" },
+    "panel.logs" => { zh: "日志", en: "Logs", ja: "履歴" },
+    "panel.logs_empty" => { zh: "(暂无操作)", en: "(no actions yet)", ja: "(操作なし)" },
+    "panel.shop" => { zh: "商店", en: "Shop", ja: "ｼｮｯﾌﾟ" },
+    "panel.shop_hint1" => { zh: "[ 此区域预留 ]", en: "[ Reserved Area ]", ja: "[ 予約領域 ]" },
+    "panel.shop_hint2" => { zh: "[ 商店即将上线 ]", en: "[ Shop coming soon ]", ja: "[ ｼｮｯﾌﾟ準備中 ]" },
 }
 
 /// Adjective names for vivid naming mode

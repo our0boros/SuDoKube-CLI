@@ -312,33 +312,36 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => return EventResult::BackToMenu,
         KeyCode::Char('n') | KeyCode::Char('N') => {
+            app.push_log("New Game", 50);
             return EventResult::StartGenerating(app.game.difficulty);
         }
         KeyCode::Char('m') | KeyCode::Char('M') => {
             app.render_mode = app.render_mode.toggle();
             let lang = Lang::from_code(&app.settings.language);
-            app.set_message(
-                format!("{}", mode_label(app.render_mode, lang)),
-                Duration::from_secs(2),
-            );
+            let label = mode_label(app.render_mode, lang);
+            app.set_message(label.to_string(), Duration::from_secs(2));
+            app.push_log(format!("Mode: {}", label), 50);
         }
         KeyCode::Char('x') | KeyCode::Char('X') => {
             let coord = current_coord(app);
             if let Some(cell) = app.game.grid.get(&coord) {
                 if !cell.given {
                     app.game.set_value(coord, None);
+                    app.push_log("Erase", 50);
                 }
             }
         }
         KeyCode::Char('g') | KeyCode::Char('G') => {
             app.guidance = !app.guidance;
-            app.set_message(
-                format!("辅助模式{}", if app.guidance { "开" } else { "关" }),
-                Duration::from_secs(2),
-            );
+            let lang = Lang::from_code(&app.settings.language);
+            let key = if app.guidance { "msg.guide_on" } else { "msg.guide_off" };
+            app.set_message(i18n::t(key, lang).to_string(), Duration::from_secs(2));
+            app.push_log(i18n::t(key, lang), 50);
         }
         KeyCode::Char('h') | KeyCode::Char('H') => {
             app.game.hint();
+            let lang = Lang::from_code(&app.settings.language);
+            app.push_log(i18n::t("debug.hint", lang), 50);
             if app.game.check_completion() {
                 app.game.completed = true;
                 app.screen = AppScreen::Victory;
@@ -350,16 +353,22 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         }
         KeyCode::Char('z') | KeyCode::Char('Z') => {
             app.game.undo();
+            app.push_log("Undo", 50);
             app.set_message("已撤销", Duration::from_secs(2));
         }
         KeyCode::Backspace | KeyCode::Delete => {
             let coord = current_coord(app);
             app.game.set_value(coord, None);
+            app.push_log("Erase", 50);
         }
         KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
             let value = c as u8 - b'0';
             let coord = current_coord(app);
             app.game.set_value(coord, Some(value));
+            app.push_log(
+                format!("Placed {} at R{}C{}", value, app.cursor.1 + 1, app.cursor.0 + 1),
+                50,
+            );
             if app.game.check_completion() {
                 app.game.completed = true;
                 app.screen = AppScreen::Victory;
@@ -381,34 +390,66 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             move_cursor_with_wrap(app, 1, 0);
         }
         KeyCode::Up => {
+            let prev = app.current_face;
             app.current_face = switch_face(app.current_face, 0, -1);
+            if app.current_face != prev {
+                let lang = Lang::from_code(&app.settings.language);
+                app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
+            }
         }
         KeyCode::Down => {
+            let prev = app.current_face;
             app.current_face = switch_face(app.current_face, 0, 1);
+            if app.current_face != prev {
+                let lang = Lang::from_code(&app.settings.language);
+                app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
+            }
         }
         KeyCode::Left => {
+            let prev = app.current_face;
             app.current_face = switch_face(app.current_face, -1, 0);
+            if app.current_face != prev {
+                let lang = Lang::from_code(&app.settings.language);
+                app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
+            }
         }
         KeyCode::Right => {
+            let prev = app.current_face;
             app.current_face = switch_face(app.current_face, 1, 0);
+            if app.current_face != prev {
+                let lang = Lang::from_code(&app.settings.language);
+                app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
+            }
         }
         KeyCode::Char('f') | KeyCode::Char('F') => {
             app.current_face = Face::Front;
+            let lang = Lang::from_code(&app.settings.language);
+            app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
         }
         KeyCode::Char('b') | KeyCode::Char('B') => {
             app.current_face = Face::Back;
+            let lang = Lang::from_code(&app.settings.language);
+            app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
         }
         KeyCode::Char('l') | KeyCode::Char('L') => {
             app.current_face = Face::Left;
+            let lang = Lang::from_code(&app.settings.language);
+            app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
         }
         KeyCode::Char('r') | KeyCode::Char('R') => {
             app.current_face = Face::Right;
+            let lang = Lang::from_code(&app.settings.language);
+            app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
         }
         KeyCode::Char('t') | KeyCode::Char('T') => {
             app.current_face = Face::Top;
+            let lang = Lang::from_code(&app.settings.language);
+            app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
         }
         KeyCode::Char('u') | KeyCode::Char('U') => {
             app.current_face = Face::Bottom;
+            let lang = Lang::from_code(&app.settings.language);
+            app.push_log(format!("→ {}", face_label(app.current_face, lang)), 50);
         }
         _ => {}
     }
@@ -434,6 +475,7 @@ fn handle_mouse(
         }
         MouseEventKind::Down(MouseButton::Left) => {
             if let Some(btn) = find_button_at(layout, mouse.column, mouse.row) {
+                log_button_click(app, btn);
                 return execute_button(app, btn);
             }
             if let Some((u, v)) = cell_at(layout, cw, ch, mouse.column, mouse.row) {
@@ -511,6 +553,36 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
 }
 
 // ── 面切换 ──
+
+fn log_button_click(app: &mut App, btn: ButtonId) {
+    let label = match btn {
+        ButtonId::Number(n) => return app.push_log(
+            format!("Placed {} at R{}C{}", n, app.cursor.1 + 1, app.cursor.0 + 1),
+            50,
+        ),
+        ButtonId::Erase => "Erase",
+        ButtonId::Hint => "Hint",
+        ButtonId::Undo => "Undo",
+        ButtonId::ToggleGuidance => {
+            // Toggle is logged inside execute_button via set_message; pre-log here.
+            "Guide"
+        }
+        ButtonId::ToggleMode => "Mode",
+        ButtonId::Quit => "Menu",
+    };
+    app.push_log(label, 50);
+}
+
+fn face_label(face: Face, _lang: Lang) -> &'static str {
+    match face {
+        Face::Front => "F",
+        Face::Back => "B",
+        Face::Left => "L",
+        Face::Right => "R",
+        Face::Top => "T",
+        Face::Bottom => "U",
+    }
+}
 
 fn cycle_face_vertical(face: Face, forward: bool) -> Face {
     let ring = [Face::Front, Face::Top, Face::Back, Face::Bottom];

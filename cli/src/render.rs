@@ -1,9 +1,9 @@
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Paragraph},
+    widgets::{Block, Borders, Padding, Paragraph},
 };
 use sudokube_core::cube::Face;
 use std::time::Instant;
@@ -81,13 +81,52 @@ pub struct ButtonLayout {
     pub width: u16,
 }
 
-/// 游戏画面布局。
+/// 游戏画面布局（三列式：左 = 控制面板，中间 = 数独网格，右 = 3D 立方体 / 预留）。
+#[allow(dead_code)]
 pub struct GameLayout {
+    /// 整个游戏区域
+    pub game_area: Rect,
+    /// 左侧列外框
+    pub left_column: Rect,
+    /// 左侧第一个面板 (Status)
+    pub status_panel: Rect,
+    /// 左侧第二个面板 (Navigator)
+    pub navigator_panel: Rect,
+    /// 左侧第三个面板 (Logs)
+    pub logs_panel: Rect,
+    /// 中间数独网格 (内容区域)
     pub grid_area: Rect,
-    pub info_area: Rect,
+    /// 中间数独外框 (含双线边框)
+    pub grid_frame: Rect,
+    /// 网格顶方向指示条
+    pub grid_top_dir: Rect,
+    /// 网格底方向指示条
+    pub grid_bot_dir: Rect,
+    /// 网格左方向指示条
+    pub grid_left_dir: Rect,
+    /// 网格右方向指示条
+    pub grid_right_dir: Rect,
+    /// 消息行（位于网格下方）
     pub msg_area: Rect,
+    /// 按钮栏
     pub btn_area: Rect,
+    /// 按钮实际起始列
+    pub btn_content_x: u16,
+    /// 右侧列外框
+    pub right_column: Rect,
+    /// 3D 立方体区域
     pub cube_area: Rect,
+    /// 立方体顶方向指示条
+    pub cube_dir_top: Rect,
+    /// 立方体底方向指示条
+    pub cube_dir_bot: Rect,
+    /// 立方体左方向指示条
+    pub cube_dir_left: Rect,
+    /// 立方体右方向指示条
+    pub cube_dir_right: Rect,
+    /// 商店预留区域
+    pub shop_area: Rect,
+    /// 按钮列表
     pub buttons: Vec<ButtonLayout>,
 }
 
@@ -191,64 +230,75 @@ fn draw_menu(f: &mut Frame, app: &App) {
     if has_sidebar {
         let sidebar_x = box_x + box_w as u16 + 2;
         let victories = &app.menu.victories;
-        let inner_sw = sidebar_w as usize - 2;
-
-        // 统计
         let total_v = victories.len();
         let easy_count = victories.iter().filter(|r| r.difficulty == "简单" || r.difficulty == "easy").count();
         let med_count = victories.iter().filter(|r| r.difficulty == "中等" || r.difficulty == "medium").count();
         let hard_count = victories.iter().filter(|r| r.difficulty == "困难" || r.difficulty == "hard").count();
 
-        let top = format!("╭{}╮", "─".repeat(inner_sw));
-        f.render_widget(Paragraph::new(top).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y, sidebar_w, 1));
+        // 侧边栏高 = 顶 + 1(标题) + 1(分隔) + 1(统计) + 1(分隔) + N(列表) + 1(底)
+        let list_rows = victories.len().min(area.bottom().saturating_sub(box_y + 5).saturating_sub(2) as usize);
+        let sidebar_h = 5 + list_rows as u16 + 1;
+        let sidebar_rect = Rect::new(sidebar_x, box_y, sidebar_w, sidebar_h);
 
-        let title = bordered_line(i18n::t("menu.sidebar_title", lang), inner_sw, true);
-        f.render_widget(Paragraph::new(title).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)), Rect::new(sidebar_x, box_y + 1, sidebar_w, 1));
+        let block = Block::bordered()
+            .title(Line::from(Span::styled(
+                format!(" {} ", i18n::t("menu.sidebar_title", lang)),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            )))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow));
+        f.render_widget(block.clone(), sidebar_rect);
+        let inner = block.inner(sidebar_rect);
+        if inner.height == 0 || inner.width == 0 { return; }
 
-        let sep = format!("╟{}╢", "─".repeat(inner_sw));
-        f.render_widget(Paragraph::new(sep).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y + 2, sidebar_w, 1));
-
+        let mut lines: Vec<Line> = Vec::with_capacity(inner.height as usize);
         // 统计行
-        let stats = format!(" {}:{} {} {}:{} {} {}:{}", 
-            i18n::t("menu.sidebar_total", lang), total_v,
-            i18n::t("game.diff_easy", lang).chars().next().unwrap_or('E'), easy_count,
-            i18n::t("game.diff_medium", lang).chars().next().unwrap_or('M'), med_count,
-            i18n::t("game.diff_hard", lang).chars().next().unwrap_or('H'), hard_count
+        let stats = format!(
+            " {}:{} {} {}:{} {} {}:{}",
+            i18n::t("menu.sidebar_total", lang),
+            total_v,
+            i18n::t("game.diff_easy", lang).chars().next().unwrap_or('E'),
+            easy_count,
+            i18n::t("game.diff_medium", lang).chars().next().unwrap_or('M'),
+            med_count,
+            i18n::t("game.diff_hard", lang).chars().next().unwrap_or('H'),
+            hard_count
         );
-        let stats_line = bordered_line(&stats, inner_sw, false);
-        f.render_widget(Paragraph::new(stats_line).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y + 3, sidebar_w, 1));
-
-        let sep2 = format!("╟{}╢", "─".repeat(inner_sw));
-        f.render_widget(Paragraph::new(sep2).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y + 4, sidebar_w, 1));
-
+        lines.push(Line::from(Span::styled(
+            stats,
+            Style::default().fg(Color::Yellow),
+        )));
+        // 分隔线
+        lines.push(Line::from(Span::styled(
+            "─".repeat(inner.width as usize),
+            Style::default().fg(Color::Yellow),
+        )));
         // 胜利列表
-        let available_rows = area.bottom().saturating_sub(box_y + 5).saturating_sub(2) as usize; // reserve bottom border + hint
-        for (i, r) in victories.iter().enumerate().take(available_rows) {
+        for r in victories.iter().take(list_rows) {
             let name = if app.settings.naming_mode == "vivid" {
                 i18n::vivid_name(r.id, lang)
             } else {
                 format!("#{}", r.id)
             };
-            // Short format: name | diff | time
             let diff_short = match r.difficulty.as_str() {
                 "简单" | "easy" => i18n::t("game.diff_easy", lang),
                 "困难" | "hard" => i18n::t("game.diff_hard", lang),
                 _ => i18n::t("game.diff_medium", lang),
             };
-            let text = format!(" {} {} {:02}:{:02}", name, diff_short, r.elapsed_seconds / 60, r.elapsed_seconds % 60);
-            let row_text = bordered_line(&text, inner_sw, false);
-            f.render_widget(
-                Paragraph::new(row_text).style(Style::default().fg(Color::DarkGray)),
-                Rect::new(sidebar_x, box_y + 5 + i as u16, sidebar_w, 1),
+            let text = format!(
+                " {} {} {:02}:{:02}",
+                name,
+                diff_short,
+                r.elapsed_seconds / 60,
+                r.elapsed_seconds % 60
             );
+            lines.push(Line::from(Span::styled(
+                text,
+                Style::default().fg(Color::DarkGray),
+            )));
         }
 
-        // 底部
-        let bot_y = box_y + 5 + victories.len().min(available_rows) as u16;
-        if bot_y < area.bottom() {
-            let bot = format!("╰{}╯", "─".repeat(inner_sw));
-            f.render_widget(Paragraph::new(bot).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, bot_y, sidebar_w, 1));
-        }
+        f.render_widget(Paragraph::new(lines), inner);
     }
 
     // 提示文字 - 固定在屏幕底部
@@ -275,52 +325,34 @@ fn draw_menu(f: &mut Frame, app: &App) {
 }
 
 fn draw_menu_box(f: &mut Frame, x: u16, y: u16, w: u16, items: &[String], selected: usize, area: Rect) {
-    let inner_w = w.saturating_sub(2) as usize; // 去掉两侧 ╭╮
-    let _h = items.len() as u16 + 2; // 顶 + items + 底
+    if y >= area.bottom() { return; }
+    let h = items.len() as u16 + 2; // 顶 + items + 底
+    if y + h > area.bottom() { return; }
 
-    // 顶行 ╭─╮
-    if y < area.bottom() {
-        let top = format!("╭{}╮", "─".repeat(inner_w));
-        f.render_widget(
-            Paragraph::new(top).style(Style::default().fg(Color::Cyan)),
-            Rect::new(x, y, w, 1),
-        );
-    }
+    let block = Block::bordered()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .style(Style::default().bg(Color::Black));
 
-    // 内容行
+    let block_area = Rect::new(x, y, w, h);
+    f.render_widget(block.clone(), block_area);
+
+    let inner = block.inner(block_area);
+    if inner.height == 0 { return; }
+
+    let mut lines: Vec<Line> = Vec::with_capacity(items.len());
     for (i, text) in items.iter().enumerate() {
-        let row = y + 1 + i as u16;
-        if row >= area.bottom() { break; }
-
         let prefix = if i == selected { "▸ " } else { "  " };
         let line_text = format!("{}{}", prefix, text);
-        let line_dw = display_width(&line_text);
-        let padding = inner_w.saturating_sub(2 + line_dw);
-        let padded = format!(" {}{} ", line_text, " ".repeat(padding));
-
         let style = if i == selected {
             Style::default().bg(Color::White).fg(Color::Black)
         } else {
             Style::default().bg(Color::Black).fg(Color::White)
         };
-
-        let line_span = Line::from(vec![
-            Span::styled("│", Style::default().fg(Color::Cyan)),
-            Span::styled(padded, style),
-            Span::styled("│", Style::default().fg(Color::Cyan)),
-        ]);
-        f.render_widget(Paragraph::new(line_span), Rect::new(x, row, w, 1));
+        lines.push(Line::from(Span::styled(line_text, style)));
     }
 
-    // 底行 ╰─╯
-    let bot_row = y + 1 + items.len() as u16;
-    if bot_row < area.bottom() {
-        let bot = format!("╰{}╯", "─".repeat(inner_w));
-        f.render_widget(
-            Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
-            Rect::new(x, bot_row, w, 1),
-        );
-    }
+    f.render_widget(Paragraph::new(lines), inner);
 }
 
 // ── 游戏画面 ──
@@ -337,18 +369,23 @@ fn draw_game(f: &mut Frame, app: &App) {
 
     let layout = compute_game_layout_from_rect(f.area(), app);
 
-    // 信息栏
-    draw_info_panel(f, &layout, app, bg, border);
-    // 数独网格
+    // 左侧：Status / Navigator / Logs
+    draw_status_panel(f, &layout, app, bg, border);
+    draw_navigator_panel(f, &layout, app, bg, border);
+    draw_logs_panel(f, &layout, app, bg, border);
+
+    // 中间：数独网格 + 消息行
     draw_sudoku_grid(f, &layout, app, bg, border);
-    // 消息行
     draw_message(f, &layout, app, bg);
+
     // 按钮栏
     draw_button_bar(f, &layout, app, bg, border);
-    // 3D立方体
+
+    // 右侧：3D 立方体 + 商店预留
     if app.settings.show_cube == "yes" {
         draw_3d_cube(f, &layout, app);
     }
+    draw_shop_panel(f, &layout, app, bg, border);
 }
 
 pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
@@ -356,80 +393,157 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
     let ch = app.render_mode.cell_height();
     let grid_inner_w = (1 + 9 * (cw + 1)) as u16;
     let grid_inner_h = (1 + 9 * (ch + 1)) as u16;
-    let _grid_w = grid_inner_w + 2; // 外边框左右各1
-    let grid_h = grid_inner_h + 2; // 外边框上下各1
+    let grid_h = grid_inner_h + 2; // 外边框上下各 1
+    let grid_w = grid_inner_w + 2; // 外边框左右各 1
 
-    // 信息栏高度 3 行（╭─╮ + 内容 + ╰─╯）
-    let info_h = 3u16;
-    // 消息行 1 行
+    // 各方向指示边占 1 列/行
+    let dir_border: u16 = 1;
+    let center_w = grid_w + dir_border * 2; // 含 4 个方向边
+
+    // 最小/默认列宽
+    let left_min_w: u16 = 22;
+    let cube_w: u16 = app.settings.cube_width.parse().unwrap_or(20);
+    let right_min_w: u16 = cube_w + 4; // direction borders + cube width + 2
+
+    // 整体高：方向边(2) + 网格 + 消息 + 按钮 + 间隔
     let msg_h = 1u16;
-    // 按钮栏高度 3 行
     let btn_h = 3u16;
     let gap = 1u16;
-    // Direction indicator borders add 2 rows (top + bottom)
-    let dir_border_h = 2u16;
+    let total_h = dir_border * 2 + grid_h + gap + msg_h + gap + btn_h;
 
-    // 右侧立方体宽度
-    let _cube_w = 20u16;
+    // ── 纵向总布局：垂直居中，长度固定 ──
+    let outer_v = Layout::vertical([Constraint::Length(total_h)])
+        .flex(ratatui::layout::Flex::Center)
+        .split(area);
+    let v_chunk = outer_v[0];
 
-    let total_h = info_h + gap + grid_h + dir_border_h + gap + msg_h + gap + btn_h;
+    // ── 横向三列布局 ──
+    // 策略：
+    //   - 屏幕过窄时（< center_w + left_min + right_min）：左右列收缩到 0，中心保留
+    //   - 屏幕足够时：根据可用空间按比例计算左右两列的实际宽度，
+    //     然后用 Length 约束精确放置 —— 避免中间网格"挤在中间"。
+    let min_w_sum = left_min_w.saturating_add(right_min_w).saturating_add(center_w);
+    if area.width < min_w_sum {
+        // 太窄：直接退化为纯中心列，等宽布局
+        let h_layout = Layout::horizontal([Constraint::Length(center_w)])
+            .flex(ratatui::layout::Flex::Center);
+        let h_chunks = h_layout.split(v_chunk);
+        let left_chunk = Rect::default();
+        let center_chunk = h_chunks[0];
+        let right_chunk = Rect::default();
+        return build_layout(app, left_chunk, center_chunk, right_chunk, center_w, dir_border, grid_h, grid_w, msg_h, btn_h, gap, cube_w, area);
+    }
 
-    let vert_offset = area.height.saturating_sub(total_h) / 2;
+    // 按比例分配左右列宽度（1:1）
+    let side_total = area.width.saturating_sub(center_w);
+    let half = side_total / 2;
+    let left_actual = half.max(left_min_w);
+    let right_actual = side_total.saturating_sub(left_actual).max(right_min_w);
 
-    let info_y = area.y + vert_offset;
-    let grid_y = info_y + info_h + gap + 1; // +1 for top direction border
-    let msg_y = grid_y + grid_h + 1 + gap; // +1 for bottom direction border
-    let btn_y = msg_y + msg_h + gap;
+    // 使用 Length 约束精确放置；Flex::Legacy 下整体填满整宽
+    let h_layout = Layout::horizontal([
+        Constraint::Length(left_actual),
+        Constraint::Length(center_w),
+        Constraint::Length(right_actual),
+    ])
+    .flex(ratatui::layout::Flex::Legacy);
+    let h_chunks = h_layout.split(v_chunk);
+    let left_chunk = h_chunks[0];
+    let center_chunk = h_chunks[1];
+    let right_chunk = h_chunks[2];
 
-    // 网格靠左，右侧留给立方体
-    let left_margin = 4u16; // space for direction border + outer frame + gap
-    let grid_x = area.x + left_margin + 1; // +1 for outer border left
+    build_layout(app, left_chunk, center_chunk, right_chunk, center_w, dir_border, grid_h, grid_w, msg_h, btn_h, gap, cube_w, area)
+}
 
-    // 信息栏宽度和位置
-    let lang = Lang::from_code(&app.settings.language);
-    let total = app.game.grid.cells.len();
-    let filled = app.game.grid.cells.values().filter(|c| c.user_value.is_some()).count();
-    let remaining = total - filled;
-    let game_name = app.game.id.map_or(i18n::t("game.unnamed", lang).to_string(), |id| {
-        if app.settings.naming_mode == "vivid" {
-            i18n::vivid_name(id, lang)
-        } else {
-            format!("#{}", id)
-        }
-    });
-    let info_text = format!(
-        "  {} [{}] {}:{} {}:{} {}/{} {}:{}  ",
-        game_name,
-        mode_label(app.render_mode, lang),
-        i18n::t("info.face", lang),
-        face_name(app.current_face, lang),
-        i18n::t("info.diff", lang),
-        app.game.difficulty.as_str(),
-        remaining,
-        total,
-        i18n::t("info.time", lang),
-        format_timer(app)
-    );
-    let info_w = display_width(&info_text) as u16 + 4;
+#[allow(clippy::too_many_arguments)]
+fn build_layout(
+    app: &App,
+    left_chunk: Rect,
+    center_chunk: Rect,
+    right_chunk: Rect,
+    _center_w: u16,
+    dir_border: u16,
+    grid_h: u16,
+    grid_w: u16,
+    msg_h: u16,
+    btn_h: u16,
+    gap: u16,
+    _cube_w: u16,
+    area: Rect,
+) -> GameLayout {
+    // ── 中间列：方向上 / 网格 / 方向下 / 消息 / 按钮 ──
+    let center_layout = Layout::vertical([
+        Constraint::Length(dir_border),                            // 顶方向边
+        Constraint::Length(grid_h),                                // 网格(含外框)
+        Constraint::Length(dir_border),                            // 底方向边
+        Constraint::Length(gap),
+        Constraint::Length(msg_h),
+        Constraint::Length(gap),
+        Constraint::Length(btn_h),
+    ]);
+    let center_parts = center_layout.split(center_chunk);
+    let grid_top_dir = center_parts[0];
+    let grid_outer = center_parts[1];
+    let grid_bot_dir = center_parts[2];
+    let _msg_gap = center_parts[3];
+    let msg_area = center_parts[4];
+    let _btn_gap = center_parts[5];
+    let btn_area = center_parts[6];
 
-    // Align the info panel's left border with the grid's outer frame (grid_x - 1)
-    // so the info bar sits directly above the grid instead of sticking out left.
-    let info_x = grid_x.saturating_sub(1).max(area.x);
-    let info_area = Rect::new(info_x, info_y, info_w.min(area.width.saturating_sub(info_x)), info_h);
-    let grid_area = Rect::new(grid_x, grid_y, grid_inner_w, grid_inner_h);
-    let msg_area = Rect::new(grid_x, msg_y, grid_inner_w, msg_h);
-    let btn_area = Rect::new(area.x, btn_y, area.width, btn_h);
+    // 网格内容（去掉外框）
+    let grid_inner_rect = grid_outer.inner(Margin { vertical: 1, horizontal: 1 });
 
-    // 3D立方体区域 - 网格右侧，留出方向边框空间
-    let cube_w: u16 = app.settings.cube_width.parse().unwrap_or(20);
+    // 中间列水平布局：左方向边 / 网格外框 / 右方向边
+    let center_h_layout = Layout::horizontal([
+        Constraint::Length(dir_border),
+        Constraint::Length(grid_w),
+        Constraint::Length(dir_border),
+    ]);
+    let center_h_parts = center_h_layout.split(Rect::new(
+        center_chunk.x,
+        grid_outer.y,
+        center_chunk.width,
+        grid_outer.height,
+    ));
+    let grid_left_dir = center_h_parts[0];
+    let _grid_center = center_h_parts[1];
+    let grid_right_dir = center_h_parts[2];
+    // 将方向边对齐到网格高度
+    let grid_left_dir = Rect::new(grid_left_dir.x, grid_outer.y, dir_border, grid_outer.height);
+    let grid_right_dir = Rect::new(grid_right_dir.x, grid_outer.y, dir_border, grid_outer.height);
+
+    // 网格框 (含外框)
+    let grid_frame = grid_outer;
+
+    // ── 左列：Status / Navigator / Logs ──
+    let left_layout = Layout::vertical([
+        Constraint::Length(6),  // status
+        Constraint::Length(9),  // navigator
+        Constraint::Fill(1),    // logs
+    ]);
+    let left_parts = left_layout.split(left_chunk);
+    let status_panel = left_parts[0];
+    let navigator_panel = left_parts[1];
+    let logs_panel = left_parts[2];
+
+    // ── 右列：3D 立方体 / 商店 ──
     let cube_h: u16 = app.settings.cube_height.parse().unwrap_or(18);
-    let cube_x = grid_x + grid_inner_w + 5; // 网格外边框+方向边+间距
-    let cube_area = Rect::new(cube_x, grid_y + 1, cube_w, cube_h); // +1 for top direction border
+    let right_layout = Layout::vertical([
+        Constraint::Length(cube_h),
+        Constraint::Length(1),  // 间隔
+        Constraint::Fill(1),    // shop
+    ]);
+    let right_parts = right_layout.split(right_chunk);
+    let cube_area = right_parts[0];
+    let shop_area = right_parts[2];
 
-    // 按钮布局 - 计算居中后的起始列
-    let btn_row = btn_y + 1; // 框内内容行
+    // 立方体外侧方向边（与 grid 类似：上下左右各 1）
+    let cube_dir_top = Rect::new(cube_area.x, cube_area.y.saturating_sub(1), cube_area.width, 1);
+    let cube_dir_bot = Rect::new(cube_area.x, cube_area.y + cube_area.height, cube_area.width, 1);
+    let cube_dir_left = Rect::new(cube_area.x.saturating_sub(1), cube_area.y, 1, cube_area.height);
+    let cube_dir_right = Rect::new(cube_area.x + cube_area.width, cube_area.y, 1, cube_area.height);
 
-    // 先收集所有按钮的label和width
+    // ── 按钮定义 ──
     let btn_defs: Vec<(String, ButtonId, u16)> = (1..=9u8)
         .map(|n| {
             let label = format!("[{}]", n);
@@ -444,21 +558,31 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
                 ("[G]Guide", ButtonId::ToggleGuidance),
                 ("[M]Mode", ButtonId::ToggleMode),
                 ("[Q]Menu", ButtonId::Quit),
-            ].iter().map(|(label, id)| {
+            ]
+            .iter()
+            .map(|(label, id)| {
                 let w = label.chars().count() as u16;
                 (label.to_string(), *id, w)
-            })
+            }),
         )
         .collect();
 
-    // 计算按钮内容总宽，与 draw_button_bar 一致
-    let total_btn_w: usize = btn_defs.iter().map(|(_, _, w)| *w as usize + 1).sum::<usize>().saturating_sub(1);
-    let inner_w = total_btn_w + 4; // 两侧空格
-    let bar_w = inner_w + 2; // 两侧 │
-    let bar_x = area.x + area.width.saturating_sub(bar_w as u16) / 2;
+    // 按钮栏使用 Block 渲染，buttons 区域是 Block 内部
+    // Block 高度 = btn_h = 3, 内部高度 = 1
+    let btn_block = Block::bordered()
+        .borders(Borders::ALL)
+        .padding(Padding::horizontal(1));
+    let btn_inner = btn_block.inner(btn_area);
+    let btn_row = btn_inner.y;
 
-    // 按钮起始列 = bar_x + 1(│) + 1(空格)
-    let mut col = bar_x + 2;
+    let total_btn_w: usize = btn_defs
+        .iter()
+        .map(|(_, _, w)| *w as usize + 1)
+        .sum::<usize>()
+        .saturating_sub(1);
+    let bar_x = btn_inner.x + btn_inner.width.saturating_sub(total_btn_w as u16) / 2;
+
+    let mut col = bar_x;
     let mut buttons = Vec::new();
     for (label, id, w) in btn_defs {
         buttons.push(ButtonLayout {
@@ -472,17 +596,74 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
     }
 
     GameLayout {
-        grid_area,
-        info_area,
+        game_area: area,
+        left_column: left_chunk,
+        status_panel,
+        navigator_panel,
+        logs_panel,
+        grid_area: grid_inner_rect,
+        grid_frame,
         msg_area,
         btn_area,
+        btn_content_x: bar_x,
+        right_column: right_chunk,
         cube_area,
+        shop_area,
         buttons,
+        // 方向边区域
+        grid_top_dir,
+        grid_bot_dir,
+        grid_left_dir,
+        grid_right_dir,
+        cube_dir_top,
+        cube_dir_bot,
+        cube_dir_left,
+        cube_dir_right,
     }
 }
 
-fn draw_info_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
+/// 绘制带标题的通用面板（使用 Block::bordered 渲染边框与标题）。
+/// `lines` 会被渲染到面板内部，超出 (panel.height - 2) 的部分会被截断。
+fn draw_framed_panel(
+    f: &mut Frame,
+    panel: Rect,
+    title: &str,
+    title_color: Color,
+    border_color: Color,
+    bg: Color,
+    lines: Vec<Line>,
+) {
+    if panel.width < 4 || panel.height < 3 {
+        return;
+    }
+    let block = Block::bordered()
+        .title(Line::from(Span::styled(
+            format!(" {} ", title),
+            Style::default().fg(title_color).add_modifier(Modifier::BOLD),
+        )))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .style(Style::default().bg(bg));
+
+    // 先渲染 Block 自身（边框 + 标题）
+    f.render_widget(block.clone(), panel);
+
+    // 再渲染内容到 inner area
+    let inner = block.inner(panel);
+    let content_h = inner.height as usize;
+    for (i, line) in lines.into_iter().take(content_h).enumerate() {
+        f.render_widget(
+            Paragraph::new(line).style(Style::default().bg(bg).fg(Color::White)),
+            Rect::new(inner.x, inner.y + i as u16, inner.width, 1),
+        );
+    }
+}
+
+/// 顶部 Status 面板：游戏名 / 难度 / 时间 / 进度。
+fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
     let lang = Lang::from_code(&app.settings.language);
+    let panel = layout.status_panel;
+    let inner_w = (panel.width - 4) as usize; // 可用文本宽度(去边框去前导空格)
     let total = app.game.grid.cells.len();
     let filled = app.game.grid.cells.values().filter(|c| c.user_value.is_some()).count();
     let remaining = total - filled;
@@ -493,45 +674,136 @@ fn draw_info_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bor
             format!("#{}", id)
         }
     });
-    let info_text = format!(
-        "  {} [{}] {}:{} {}:{} {}/{} {}:{}  ",
-        game_name,
-        mode_label(app.render_mode, lang),
-        i18n::t("info.face", lang),
-        face_name(app.current_face, lang),
-        i18n::t("info.diff", lang),
-        app.game.difficulty.as_str(),
-        remaining,
-        total,
-        i18n::t("info.time", lang),
-        format_timer(app)
+    let progress_pct = if total == 0 { 0 } else { (filled * 100) / total };
+    let bar_w = inner_w.saturating_sub(2).max(4);
+    let filled_w = (bar_w * filled) / total.max(1);
+    let progress_bar = format!(
+        "[{}{}]",
+        "█".repeat(filled_w),
+        "░".repeat(bar_w.saturating_sub(filled_w))
     );
-    let inner_w = display_width(&info_text);
-    let top = format!("╭{}╮", "─".repeat(inner_w));
-    let bot = format!("╰{}╯", "─".repeat(inner_w));
 
-    let x = layout.info_area.x;
-    let y = layout.info_area.y;
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(game_name.clone(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(format!(
+            " {}: {}  {}: {}",
+            i18n::t("info.face", lang),
+            face_name(app.current_face, lang),
+            i18n::t("info.diff", lang),
+            app.game.difficulty.as_str(),
+        )),
+        Line::from(format!(
+            " {}: {}",
+            i18n::t("info.time", lang),
+            format_timer(app),
+        )),
+        Line::from(format!(" {}/{} ({}%)", remaining, total, progress_pct)),
+        Line::from(progress_bar),
+    ];
 
-    // 顶行
-    f.render_widget(
-        Paragraph::new(top).style(Style::default().fg(border)),
-        Rect::new(x, y, (inner_w + 2) as u16, 1),
+    draw_framed_panel(
+        f,
+        panel,
+        i18n::t("panel.status", lang),
+        Color::Cyan,
+        border,
+        bg,
+        lines,
     );
-    // 内容行
-    let line = Line::from(vec![
-        Span::styled("│", Style::default().fg(border)),
-        Span::styled(info_text, Style::default().fg(Color::White).bg(bg)),
-        Span::styled("│", Style::default().fg(border)),
-    ]);
-    f.render_widget(
-        Paragraph::new(line),
-        Rect::new(x, y + 1, (inner_w + 2) as u16, 1),
+}
+
+/// Navigator 面板：方向键 / WASD / FBLRTU 提示 + 当前面指示。
+fn draw_navigator_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
+    let lang = Lang::from_code(&app.settings.language);
+    let panel = layout.navigator_panel;
+    let face_color = face_to_color(app.current_face);
+    let (up, down, left, right, _back) = arrow_neighbor_faces(app.current_face);
+
+    let current_marker = format!("● {} ({})", app.current_face.short_code(), face_name(app.current_face, lang));
+
+    let lines = vec![
+        Line::from(format!(" ↑ {}    [W]上", face_name(up, lang))),
+        Line::from(format!(" ↓ {}    [S]下", face_name(down, lang))),
+        Line::from(format!(" ← {}    [A]左", face_name(left, lang))),
+        Line::from(format!(" → {}    [D]右", face_name(right, lang))),
+        Line::from(format!(" [F]前 [B]后 [L]左 [R]右")),
+        Line::from(format!(" [T]上 [U]下")),
+        Line::from(Span::styled(
+            current_marker,
+            Style::default().fg(face_color).add_modifier(Modifier::BOLD),
+        )),
+    ];
+
+    draw_framed_panel(
+        f,
+        panel,
+        i18n::t("panel.navigator", lang),
+        Color::Green,
+        border,
+        bg,
+        lines,
     );
-    // 底行 ╰─╯
-    f.render_widget(
-        Paragraph::new(bot).style(Style::default().fg(border)),
-        Rect::new(x, y + 2, (inner_w + 2) as u16, 1),
+}
+
+/// Logs 面板：最近 N 条操作。
+fn draw_logs_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
+    let lang = Lang::from_code(&app.settings.language);
+    let panel = layout.logs_panel;
+    let inner_h = panel.height.saturating_sub(2) as usize;
+
+    // 收集行：新 -> 旧
+    let mut entries: Vec<String> = app.action_log.iter().rev().cloned().collect();
+    // 如果为空，至少给一行提示
+    if entries.is_empty() {
+        entries.push(i18n::t("panel.logs_empty", lang).to_string());
+    }
+    entries.truncate(inner_h);
+
+    let lines: Vec<Line> = entries
+        .into_iter()
+        .map(|s| Line::from(Span::styled(s, Style::default().fg(Color::White))))
+        .collect();
+
+    draw_framed_panel(
+        f,
+        panel,
+        i18n::t("panel.logs", lang),
+        Color::Yellow,
+        border,
+        bg,
+        lines,
+    );
+}
+
+/// 商店预留面板。
+fn draw_shop_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
+    let lang = Lang::from_code(&app.settings.language);
+    let panel = layout.shop_area;
+    if panel.width < 4 || panel.height < 3 {
+        return;
+    }
+
+    let lines = vec![
+        Line::from(Span::styled(
+            i18n::t("panel.shop_hint1", lang),
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+        )),
+        Line::from(Span::styled(
+            i18n::t("panel.shop_hint2", lang),
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+        )),
+    ];
+
+    draw_framed_panel(
+        f,
+        panel,
+        i18n::t("panel.shop", lang),
+        Color::Magenta,
+        border,
+        bg,
+        lines,
     );
 }
 
@@ -540,36 +812,17 @@ fn draw_sudoku_grid(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bo
     let ch = app.render_mode.cell_height();
     let ox = layout.grid_area.x;
     let oy = layout.grid_area.y;
-
-    // 外边框 - 颜色对应当前面
-    let face_color = face_to_color(app.current_face);
     let grid_w = layout.grid_area.width;
     let grid_h = layout.grid_area.height;
 
-    // 顶
-    let top_outer = format!("╔{}╗", "═".repeat(grid_w as usize));
-    f.render_widget(
-        Paragraph::new(top_outer).style(Style::default().fg(face_color)),
-        Rect::new(ox.saturating_sub(1), oy.saturating_sub(1), grid_w + 2, 1),
-    );
-    // 左右 + 内容区域两侧
-    for row in 0..grid_h {
-        let y = oy + row;
-        f.render_widget(
-            Paragraph::new("║").style(Style::default().fg(face_color)),
-            Rect::new(ox.saturating_sub(1), y, 1, 1),
-        );
-        f.render_widget(
-            Paragraph::new("║").style(Style::default().fg(face_color)),
-            Rect::new(ox + grid_w, y, 1, 1),
-        );
-    }
-    // 底
-    let bot_outer = format!("╚{}╝", "═".repeat(grid_w as usize));
-    f.render_widget(
-        Paragraph::new(bot_outer).style(Style::default().fg(face_color)),
-        Rect::new(ox.saturating_sub(1), oy + grid_h, grid_w + 2, 1),
-    );
+    // 外边框 - 颜色对应当前面（用 Block 渲染）
+    let face_color = face_to_color(app.current_face);
+    let block = Block::bordered()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(face_color))
+        .style(Style::default().bg(bg));
+    let block_area = Rect::new(ox.saturating_sub(1), oy.saturating_sub(1), grid_w + 2, grid_h + 2);
+    f.render_widget(block, block_area);
 
     // 逐行逐列绘制网格
     for v in 0..9usize {
@@ -589,13 +842,7 @@ fn draw_sudoku_grid(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bo
     draw_separator(f, ox, bot_y, cw, false, true, true, layout.grid_area, border);
 
     // ── Direction indicator borders ──
-    // Draw 4 colored edges outside the outer frame to show which face is in each direction
-    let outer_x = ox.saturating_sub(1); // left edge of outer frame
-    let outer_y = oy.saturating_sub(1); // top edge of outer frame
-    let outer_w = grid_w + 2;           // total outer width
-    let outer_h = grid_h + 2;           // total outer height
-
-    // Compute neighbor faces based on current face (WASD edge-crossing)
+    // 4 个方向上的邻居面色（用 layout 中预计算好的 Rect）
     let (up_face, down_face, left_face, right_face, back_face) = wasd_neighbor_faces(app.current_face);
     let up_color = face_to_color(up_face);
     let down_color = face_to_color(down_face);
@@ -603,52 +850,55 @@ fn draw_sudoku_grid(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bo
     let right_color = face_to_color(right_face);
     let back_color = face_to_color(back_face);
 
-    // Top direction border
-    if outer_y > 0 {
-        let dir_y = outer_y.saturating_sub(1);
-        let top_line = "▔".repeat(outer_w as usize);
+    // 顶方向
+    let top_line: String = "▔".repeat(layout.grid_top_dir.width as usize);
+    if layout.grid_top_dir.width > 0 && layout.grid_top_dir.height > 0 {
         f.render_widget(
             Paragraph::new(top_line).style(Style::default().fg(up_color)),
-            Rect::new(outer_x, dir_y, outer_w, 1),
+            layout.grid_top_dir,
         );
     }
-
-    // Bottom direction border
-    {
-        let dir_y = outer_y + outer_h;
-        let bot_line = "▁".repeat(outer_w as usize);
+    // 底方向
+    let bot_line: String = "▁".repeat(layout.grid_bot_dir.width as usize);
+    if layout.grid_bot_dir.width > 0 && layout.grid_bot_dir.height > 0 {
         f.render_widget(
             Paragraph::new(bot_line).style(Style::default().fg(down_color)),
-            Rect::new(outer_x, dir_y, outer_w, 1),
+            layout.grid_bot_dir,
         );
     }
-
-    // Left direction border
-    if outer_x > 0 {
-        let dir_x = outer_x.saturating_sub(1);
-        for row in 0..outer_h {
-            f.render_widget(
-                Paragraph::new("▏").style(Style::default().fg(left_color)),
-                Rect::new(dir_x, outer_y + row, 1, 1),
-            );
+    // 左方向
+    if layout.grid_left_dir.width > 0 && layout.grid_left_dir.height > 0 {
+        let mut s = String::new();
+        for _ in 0..layout.grid_left_dir.height {
+            s.push('▏');
+            s.push('\n');
         }
+        f.render_widget(
+            Paragraph::new(s).style(Style::default().fg(left_color)),
+            layout.grid_left_dir,
+        );
     }
-
-    // Right direction border
-    {
-        let dir_x = outer_x + outer_w;
-        for row in 0..outer_h {
-            f.render_widget(
-                Paragraph::new("▕").style(Style::default().fg(right_color)),
-                Rect::new(dir_x, outer_y + row, 1, 1),
-            );
+    // 右方向
+    if layout.grid_right_dir.width > 0 && layout.grid_right_dir.height > 0 {
+        let mut s = String::new();
+        for _ in 0..layout.grid_right_dir.height {
+            s.push('▕');
+            s.push('\n');
         }
+        f.render_widget(
+            Paragraph::new(s).style(Style::default().fg(right_color)),
+            layout.grid_right_dir,
+        );
     }
 
     // ── Back-face indicator: solid block at bottom-right corner ──
-    {
-        let indicator_x = outer_x + outer_w + 1;
-        let indicator_y = outer_y + outer_h;
+    let outer_x = block_area.x;
+    let outer_y = block_area.y;
+    let outer_w = block_area.width;
+    let outer_h = block_area.height;
+    let indicator_x = outer_x + outer_w;
+    let indicator_y = outer_y + outer_h;
+    if indicator_x < f.area().width && indicator_y < f.area().height {
         f.render_widget(
             Paragraph::new("■").style(Style::default().fg(back_color)),
             Rect::new(indicator_x, indicator_y, 1, 1),
@@ -791,50 +1041,36 @@ fn draw_message(f: &mut Frame, layout: &GameLayout, app: &App, _bg: Color) {
 }
 
 fn draw_button_bar(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
-    let x = layout.btn_area.x;
-    let y = layout.btn_area.y;
-    let w = layout.btn_area.width;
+    if layout.btn_area.width < 4 || layout.btn_area.height < 3 { return; }
 
-    if w < 4 || layout.btn_area.height < 3 { return; }
+    // Block 自带边框与内部 padding
+    let block = Block::bordered()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border))
+        .style(Style::default().bg(bg));
+    f.render_widget(block.clone(), layout.btn_area);
 
-    // 计算按钮内容总宽
-    let total_btn_w: usize = layout.buttons.iter().map(|b| b.width as usize + 1).sum::<usize>().saturating_sub(1);
-    let inner_w = total_btn_w + 4; // 两侧空格
-    let bar_w = inner_w + 2; // 两侧 │
+    // 按钮渲染到 Block inner 区域
+    let inner = block.inner(layout.btn_area);
+    if inner.height == 0 || inner.width == 0 { return; }
 
-    let bar_x = x + w.saturating_sub(bar_w as u16) / 2;
-
-    // 顶行 ╭─╮
-    let top = format!("╭{}╮", "─".repeat(inner_w));
-    f.render_widget(
-        Paragraph::new(top).style(Style::default().fg(border)),
-        Rect::new(bar_x, y, bar_w as u16, 1),
-    );
-
-    // 内容行：按钮
-    let mut spans: Vec<Span> = vec![Span::styled("│", Style::default().fg(border)), Span::raw(" ")];
-    for btn in &layout.buttons {
+    // 内容行：用一行 Line 包含全部按钮，hover 时反色
+    let mut spans: Vec<Span> = Vec::with_capacity(layout.buttons.len() * 2);
+    for (i, btn) in layout.buttons.iter().enumerate() {
         let is_hover = app.hover_button == Some(btn.id);
         let style = if is_hover {
             Style::default().bg(Color::White).fg(Color::Black)
         } else {
             Style::default().bg(bg).fg(Color::White)
         };
+        if i > 0 {
+            spans.push(Span::raw(" "));
+        }
         spans.push(Span::styled(&btn.label, style));
-        spans.push(Span::raw(" "));
     }
-    spans.push(Span::styled("│", Style::default().fg(border)));
-
     f.render_widget(
         Paragraph::new(Line::from(spans)),
-        Rect::new(bar_x, y + 1, bar_w as u16, 1),
-    );
-
-    // 底行 ╰─╯
-    let bot = format!("╰{}╯", "─".repeat(inner_w));
-    f.render_widget(
-        Paragraph::new(bot).style(Style::default().fg(border)),
-        Rect::new(bar_x, y + 2, bar_w as u16, 1),
+        inner,
     );
 }
 
@@ -851,62 +1087,57 @@ fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
     let left_color = face_to_color(left_face);
     let right_color = face_to_color(right_face);
 
-    if area.x > 0 && area.y > 0 {
-        // Top arrow border
-        let top_line = "▔".repeat(area.width as usize);
+    // 顶方向
+    if layout.cube_dir_top.width > 0 && layout.cube_dir_top.height > 0 {
+        let line: String = "▔".repeat(layout.cube_dir_top.width as usize);
         f.render_widget(
-            Paragraph::new(top_line).style(Style::default().fg(up_color)),
-            Rect::new(area.x, area.y.saturating_sub(1), area.width, 1),
+            Paragraph::new(line).style(Style::default().fg(up_color)),
+            layout.cube_dir_top,
         );
-        // Bottom arrow border
-        let bot_line = "▁".repeat(area.width as usize);
+    }
+    // 底方向
+    if layout.cube_dir_bot.width > 0 && layout.cube_dir_bot.height > 0 {
+        let line: String = "▁".repeat(layout.cube_dir_bot.width as usize);
         f.render_widget(
-            Paragraph::new(bot_line).style(Style::default().fg(down_color)),
-            Rect::new(area.x, area.y + area.height, area.width, 1),
+            Paragraph::new(line).style(Style::default().fg(down_color)),
+            layout.cube_dir_bot,
         );
-        // Left arrow border
-        let dir_x = area.x.saturating_sub(1);
-        for row in 0..area.height {
-            f.render_widget(
-                Paragraph::new("▏").style(Style::default().fg(left_color)),
-                Rect::new(dir_x, area.y + row, 1, 1),
-            );
+    }
+    // 左方向
+    if layout.cube_dir_left.width > 0 && layout.cube_dir_left.height > 0 {
+        let mut s = String::new();
+        for _ in 0..layout.cube_dir_left.height {
+            s.push('▏');
+            s.push('\n');
         }
-        // Right arrow border
-        for row in 0..area.height {
-            f.render_widget(
-                Paragraph::new("▕").style(Style::default().fg(right_color)),
-                Rect::new(area.x + area.width, area.y + row, 1, 1),
-            );
+        f.render_widget(
+            Paragraph::new(s).style(Style::default().fg(left_color)),
+            layout.cube_dir_left,
+        );
+    }
+    // 右方向
+    if layout.cube_dir_right.width > 0 && layout.cube_dir_right.height > 0 {
+        let mut s = String::new();
+        for _ in 0..layout.cube_dir_right.height {
+            s.push('▕');
+            s.push('\n');
         }
+        f.render_widget(
+            Paragraph::new(s).style(Style::default().fg(right_color)),
+            layout.cube_dir_right,
+        );
     }
 
-    // 绘制边框
+    // 绘制外边框（用 Block）
     let border_color = face_to_color(app.current_face);
-    let inner_w = area.width as usize - 2;
-    let top = format!("╭{}╮", "─".repeat(inner_w));
-    let bot = format!("╰{}╯", "─".repeat(inner_w));
-    f.render_widget(
-        Paragraph::new(top).style(Style::default().fg(border_color)),
-        Rect::new(area.x, area.y, area.width, 1),
-    );
-    for row in 1..area.height.saturating_sub(1) {
-        f.render_widget(
-            Paragraph::new("│").style(Style::default().fg(border_color)),
-            Rect::new(area.x, area.y + row, 1, 1),
-        );
-        f.render_widget(
-            Paragraph::new("│").style(Style::default().fg(border_color)),
-            Rect::new(area.x + area.width - 1, area.y + row, 1, 1),
-        );
-    }
-    f.render_widget(
-        Paragraph::new(bot).style(Style::default().fg(border_color)),
-        Rect::new(area.x, area.y + area.height - 1, area.width, 1),
-    );
+    let block = Block::bordered()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
+    f.render_widget(block.clone(), area);
 
     // 内容区域（去掉边框）
-    let content_area = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
+    let content_area = block.inner(area);
+    if content_area.width < 2 || content_area.height < 2 { return; }
 
     let cx = content_area.x as f64 + content_area.width as f64 / 2.0;
     let cy = content_area.y as f64 + content_area.height as f64 / 2.0;

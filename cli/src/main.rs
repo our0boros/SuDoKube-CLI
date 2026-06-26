@@ -19,6 +19,7 @@ use sudokube_core::wfc::WfcGenerator;
 use input::{handle_event, EventResult};
 use render::{ButtonId, RenderMode};
 use save::{save_game, GameRecord};
+use std::collections::VecDeque;
 
 /// 当前画面
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,6 +203,7 @@ pub struct App {
     pub victory_countdown: Option<Instant>,  // Victory screen countdown
     pub import_buffer: String,               // Import input buffer
     pub export_select: usize,                // 0=encrypted, 1=plaintext
+    pub action_log: VecDeque<String>,        // Recent action messages (newest at back)
 }
 
 impl App {
@@ -230,6 +232,7 @@ impl App {
             victory_countdown: None,
             import_buffer: String::new(),
             export_select: 0,
+            action_log: VecDeque::new(),
         }
     }
 
@@ -245,6 +248,14 @@ impl App {
     pub fn set_message(&mut self, text: impl Into<String>, duration: Duration) {
         self.message = text.into();
         self.message_until = Some(Instant::now() + duration);
+    }
+
+    /// Push a line into the action log (keeps at most `max` entries).
+    pub fn push_log(&mut self, line: impl Into<String>, max: usize) {
+        self.action_log.push_back(line.into());
+        while self.action_log.len() > max {
+            self.action_log.pop_front();
+        }
     }
 
     pub fn clear_message_if_expired(&mut self) {
