@@ -26,21 +26,21 @@ pub struct ButtonTheme {
 }
 
 pub const THEME_PRIMARY: ButtonTheme = ButtonTheme {
-    text: Color::Rgb(16, 24, 48),
+    text: Color::White,
     background: Color::Rgb(48, 72, 144),
     highlight: Color::Rgb(64, 96, 192),
     shadow: Color::Rgb(32, 48, 96),
 };
 
 pub const THEME_SUCCESS: ButtonTheme = ButtonTheme {
-    text: Color::Rgb(16, 48, 16),
+    text: Color::White,
     background: Color::Rgb(48, 144, 48),
     highlight: Color::Rgb(64, 192, 64),
     shadow: Color::Rgb(32, 96, 32),
 };
 
 pub const THEME_DANGER: ButtonTheme = ButtonTheme {
-    text: Color::Rgb(48, 16, 16),
+    text: Color::White,
     background: Color::Rgb(144, 48, 48),
     highlight: Color::Rgb(192, 64, 64),
     shadow: Color::Rgb(96, 32, 32),

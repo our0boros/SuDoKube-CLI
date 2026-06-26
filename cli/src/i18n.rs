@@ -76,6 +76,8 @@ tr_map! {
 
     // Messages
     "msg.generating" => { zh: "正在生成数独立方体...", en: "Generating Sudoku Cube...", ja: "数独立方体を生成中..." },
+    "msg.gen_cancel_hint" => { zh: "(按 Esc 中断)", en: "(press Esc to cancel)", ja: "(Escで中断)" },
+    "msg.gen_cancelled" => { zh: "生成已中断", en: "Generation cancelled", ja: "生成中断" },
     "msg.guide_on" => { zh: "辅助模式已开启", en: "Guide mode ON", ja: "ガイドモード ON" },
     "msg.guide_off" => { zh: "辅助模式已关闭", en: "Guide mode OFF", ja: "ガイドモード OFF" },
     "msg.mode_switched" => { zh: "已切换为 {} 模式", en: "Switched to {} mode", ja: "{}モードに切替" },
@@ -123,6 +125,7 @@ tr_map! {
     "import.paste" => { zh: "请粘贴对局数据后按 Enter", en: "Paste game data then Enter", ja: "対局ﾃﾞｰﾀを貼付けてEnter" },
     "import.success" => { zh: "导入成功!", en: "Import successful!", ja: "ｲﾝﾎﾟｰﾄ成功!" },
     "import.fail" => { zh: "导入失败: 无效数据", en: "Import failed: invalid data", ja: "ｲﾝﾎﾟｰﾄ失敗: 無効ﾃﾞｰﾀ" },
+    "import.timeout" => { zh: "粘贴超时已取消 (>5s)", en: "Paste timeout cancelled (>5s)", ja: "貼付ﾀｲﾑｱｳﾄ (>5s)" },
 
     // Naming mode
     "naming.vivid" => { zh: "生动", en: "Vivid", ja: "鮮やか" },

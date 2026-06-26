@@ -181,6 +181,8 @@ pub struct SettingsState {
     pub hover_field: Option<usize>,
     /// 鼠标悬停的方向（None / Left / Right）
     pub hover_arrow: Option<SettingsArrow>,
+    /// 弹窗是否可见（默认隐藏,需用户主动打开）
+    pub visible: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,6 +261,7 @@ pub struct App {
     pub message: String,
     pub message_until: Option<Instant>,
     pub hover_button: Option<ButtonId>,
+    pub btn_page: u16, // 当前按钮栏页码 (0-based)
     pub settings: AppSettings,
     pub settings_ui: SettingsState,
     pub generating: Option<GeneratingState>,
@@ -266,6 +269,8 @@ pub struct App {
     pub cube_angle_x: f64,                  // 3D cube X-axis rotation angle
     pub victory_countdown: Option<Instant>, // Victory screen countdown
     pub import_buffer: String,              // Import input buffer
+    pub import_paste_started: Option<Instant>, // 一键粘贴开始时间
+    pub import_last_input: Option<Instant>,    // 上次输入时间(用于检测连续粘贴)
     pub export_select: usize,               // 0=encrypted, 1=plaintext
     pub action_log: VecDeque<String>,       // Recent action messages (newest at back)
     pub overflow_notice_elapsed: Option<Instant>, // Until when to suppress overflow mode-switch notice
@@ -291,6 +296,7 @@ impl App {
             message: String::new(),
             message_until: None,
             hover_button: None,
+            btn_page: 0,
             settings: AppSettings::load_from_db(),
             settings_ui: SettingsState::from_settings(&AppSettings::load_from_db()),
             generating: None,
@@ -298,6 +304,8 @@ impl App {
             cube_angle_x: 0.0,
             victory_countdown: None,
             import_buffer: String::new(),
+            import_paste_started: None,
+            import_last_input: None,
             export_select: 0,
             action_log: VecDeque::new(),
             overflow_notice_elapsed: None,
@@ -305,12 +313,14 @@ impl App {
     }
 
     pub fn start_game(game: GameState) -> Self {
-        Self {
+        let mut app = Self {
             screen: AppScreen::Game,
             game,
             victory_countdown: None,
             ..Self::new_menu()
-        }
+        };
+        app.btn_page = 0;
+        app
     }
 
     pub fn set_message(&mut self, text: impl Into<String>, duration: Duration) {
@@ -447,6 +457,7 @@ impl SettingsState {
             scroll: 0,
             hover_field: None,
             hover_arrow: None,
+            visible: false,
         }
     }
 
@@ -562,7 +573,7 @@ fn run_app(
             }
         }
 
-        terminal.draw(|f| render::draw(f, &app))?;
+        terminal.draw(|f| render::draw(f, &mut app))?;
 
         // 事件处理
         if event::poll(Duration::from_millis(50))? {

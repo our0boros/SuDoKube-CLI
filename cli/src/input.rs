@@ -7,7 +7,8 @@ use sudokube_core::cube::{Difficulty, Face};
 
 use crate::i18n::{self, Lang};
 use crate::render::{
-    ButtonId, GameLayout, cell_at, compute_game_layout_from_rect, find_button_at, mode_label,
+    ButtonId, GameLayout, PagerAction, cell_at, compute_game_layout_from_rect, find_button_at,
+    mode_label, pager_action_at,
 };
 use crate::save::delete_game;
 use crate::{App, AppScreen, MenuItem, current_coord};
@@ -23,11 +24,15 @@ pub enum EventResult {
 }
 
 pub fn handle_event(app: &mut App, event: Event, area: Rect) -> EventResult {
+    // 当 Settings 弹窗可见时,所有事件都路由到 settings handler（弹窗覆盖菜单）
+    if app.screen == AppScreen::Menu && app.settings_ui.visible {
+        return handle_settings_event(app, event, area);
+    }
     match app.screen {
         AppScreen::Menu => handle_menu_event(app, event, area),
         AppScreen::Game => handle_game_event(app, event, area),
         AppScreen::Settings => handle_settings_event(app, event, area),
-        AppScreen::Generating => EventResult::Continue,
+        AppScreen::Generating => handle_generating_event(app, event),
         AppScreen::Victory => handle_victory_event(app, event),
         AppScreen::ExportSelect => handle_export_select_event(app, event),
         AppScreen::ImportInput => handle_import_input_event(app, event),
@@ -38,6 +43,22 @@ fn handle_victory_event(app: &mut App, event: Event) -> EventResult {
     if let Event::Key(key) = event {
         if key.kind == KeyEventKind::Press && key.code == KeyCode::Enter {
             *app = App::new_menu();
+            return EventResult::Continue;
+        }
+    }
+    EventResult::Continue
+}
+
+/// Generating 屏: 允许按 Esc 中断这次生成,回到菜单
+fn handle_generating_event(app: &mut App, event: Event) -> EventResult {
+    if let Event::Key(key) = event {
+        if key.kind == KeyEventKind::Press && key.code == KeyCode::Esc {
+            // 丢弃生成中的结果,回到菜单,并显示取消提示
+            app.generating = None;
+            let lang = Lang::from_code(&app.settings.language);
+            let msg = i18n::t("msg.gen_cancelled", lang).to_string();
+            *app = App::new_menu();
+            app.set_message(msg, Duration::from_secs(3));
             return EventResult::Continue;
         }
     }
@@ -90,7 +111,39 @@ fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
 }
 
 fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
-    if let Event::Key(key) = event {
+    // 粘贴超时检测: 连续输入(突发)超过 5 秒即放弃,避免长串黏贴一直右滑
+    const PASTE_BURST_GAP: Duration = Duration::from_millis(100);
+    const PASTE_MAX_DURATION: Duration = Duration::from_secs(5);
+    let now = Instant::now();
+
+    let check_paste_timeout = |app: &mut App| -> bool {
+        // 返回 true 表示已超时并已处理
+        let in_burst = app
+            .import_last_input
+            .map(|t| now.duration_since(t) < PASTE_BURST_GAP)
+            .unwrap_or(false);
+        if in_burst && !app.import_buffer.is_empty() {
+            let started = app.import_paste_started.unwrap_or(now);
+            if now.duration_since(started) > PASTE_MAX_DURATION {
+                app.import_buffer.clear();
+                app.import_paste_started = None;
+                app.import_last_input = None;
+                app.screen = AppScreen::Menu;
+                let lang = Lang::from_code(&app.settings.language);
+                app.set_message(
+                    i18n::t("import.timeout", lang).to_string(),
+                    Duration::from_secs(3),
+                );
+                return true;
+            }
+        } else if !in_burst {
+            // 间隔较长 -> 重新开始一次计时
+            app.import_paste_started = Some(now);
+        }
+        false
+    };
+
+    if let Event::Key(key) = event.clone() {
         if key.kind != KeyEventKind::Press {
             return EventResult::Continue;
         }
@@ -133,23 +186,36 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
                     app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));
                     app.screen = AppScreen::Menu;
                 }
+                app.import_paste_started = None;
+                app.import_last_input = None;
             }
             KeyCode::Esc => {
                 app.import_buffer.clear();
+                app.import_paste_started = None;
+                app.import_last_input = None;
                 app.screen = AppScreen::Menu;
             }
             KeyCode::Char(c) => {
+                if check_paste_timeout(app) {
+                    return EventResult::Continue;
+                }
                 app.import_buffer.push(c);
+                app.import_last_input = Some(now);
             }
             KeyCode::Backspace => {
                 app.import_buffer.pop();
+                app.import_last_input = Some(now);
             }
             _ => {}
         }
     }
     // Handle paste event from terminal (Ctrl+V, right-click paste, etc.)
     if let Event::Paste(s) = event {
+        if check_paste_timeout(app) {
+            return EventResult::Continue;
+        }
         app.import_buffer.push_str(&s);
+        app.import_last_input = Some(now);
     }
     EventResult::Continue
 }
@@ -175,7 +241,8 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                     MenuItem::NewGame(d) => EventResult::StartGenerating(d),
                     MenuItem::Continue(r) => EventResult::StartGame(crate::continue_game(&r)),
                     MenuItem::Settings => {
-                        app.screen = AppScreen::Settings;
+                        // 弹窗模式: 在菜单上叠加,而不是切到独立屏幕
+                        app.settings_ui.visible = true;
                         EventResult::Continue
                     }
                     MenuItem::Export => {
@@ -184,6 +251,8 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                     }
                     MenuItem::Import => {
                         app.import_buffer.clear();
+                        app.import_paste_started = None;
+                        app.import_last_input = None;
                         app.screen = AppScreen::ImportInput;
                         EventResult::Continue
                     }
@@ -214,6 +283,8 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
             }
             KeyCode::Char('i') | KeyCode::Char('I') => {
                 app.import_buffer.clear();
+                app.import_paste_started = None;
+                app.import_last_input = None;
                 app.screen = AppScreen::ImportInput;
             }
             _ => {}
@@ -229,7 +300,8 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                         MenuItem::NewGame(d) => EventResult::StartGenerating(d),
                         MenuItem::Continue(r) => EventResult::StartGame(crate::continue_game(&r)),
                         MenuItem::Settings => {
-                            app.screen = AppScreen::Settings;
+                            // 弹窗模式: 在菜单上叠加,而不是切到独立屏幕
+                            app.settings_ui.visible = true;
                             EventResult::Continue
                         }
                         MenuItem::Export => {
@@ -238,6 +310,8 @@ fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> EventResult {
                         }
                         MenuItem::Import => {
                             app.import_buffer.clear();
+                            app.import_paste_started = None;
+                            app.import_last_input = None;
                             app.screen = AppScreen::ImportInput;
                             EventResult::Continue
                         }
@@ -292,7 +366,11 @@ fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> EventResult
             }
             KeyCode::Enter | KeyCode::Esc => {
                 app.settings.save_to_db();
-                app.screen = AppScreen::Menu;
+                app.settings_ui.visible = false;
+                // 弹窗模式: 切回菜单而非停留在独立 Settings 屏
+                if app.screen == AppScreen::Settings {
+                    app.screen = AppScreen::Menu;
+                }
             }
             _ => {}
         },
@@ -348,7 +426,10 @@ fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> EventResult
                 // 点击弹窗外部：关闭
                 if !rect_contains(layout.popup_area, mouse.column, mouse.row) {
                     app.settings.save_to_db();
-                    app.screen = AppScreen::Menu;
+                    app.settings_ui.visible = false;
+                    if app.screen == AppScreen::Settings {
+                        app.screen = AppScreen::Menu;
+                    }
                 }
             }
             // 滚轮支持
@@ -399,6 +480,21 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         return EventResult::Continue;
     }
 
+    // 按钮栏翻页快捷键: '[' 上一页, ']' 下一页
+    if key.code == KeyCode::Char('[') || key.code == KeyCode::Char('{') {
+        if app.btn_page > 0 {
+            app.btn_page -= 1;
+            app.hover_button = None;
+        }
+        return EventResult::Continue;
+    }
+    if key.code == KeyCode::Char(']') || key.code == KeyCode::Char('}') {
+        // 简单按 (current+1) 处理,布局计算时会自动夹紧
+        app.btn_page = app.btn_page.saturating_add(1);
+        app.hover_button = None;
+        return EventResult::Continue;
+    }
+
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => return EventResult::BackToMenu,
         KeyCode::Char('n') | KeyCode::Char('N') => {
@@ -412,7 +508,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             app.set_message(label.to_string(), Duration::from_secs(2));
             app.push_log(format!("Mode: {}", label), 50);
         }
-        KeyCode::Char('x') | KeyCode::Char('X') => {
+        KeyCode::Char('e') | KeyCode::Char('E') | KeyCode::Char('x') | KeyCode::Char('X') => {
             let coord = current_coord(app);
             if let Some(cell) = app.game.grid.get(&coord) {
                 if !cell.given {
@@ -557,6 +653,22 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
     EventResult::Continue
 }
 
+fn apply_pager_action(app: &mut App, layout: &GameLayout, action: PagerAction) {
+    let total = layout
+        .pager
+        .as_ref()
+        .map(|p| p.total_pages)
+        .unwrap_or(1)
+        .max(1) as i32;
+    let cur = app.btn_page as i32;
+    let new_page = match action {
+        PagerAction::Prev => (cur - 1).max(0),
+        PagerAction::Next => (cur + 1).min(total - 1).max(0),
+    };
+    app.btn_page = new_page as u16;
+    app.hover_button = None;
+}
+
 fn handle_mouse(app: &mut App, layout: &GameLayout, mouse: MouseEvent) -> EventResult {
     let cw = app.render_mode.cell_width(&app.settings);
     let ch = app.render_mode.cell_height();
@@ -569,6 +681,11 @@ fn handle_mouse(app: &mut App, layout: &GameLayout, mouse: MouseEvent) -> EventR
             }
         }
         MouseEventKind::Down(MouseButton::Left) => {
+            // 翻页控件优先
+            if let Some(action) = pager_action_at(layout, mouse.column, mouse.row) {
+                apply_pager_action(app, layout, action);
+                return EventResult::Continue;
+            }
             if let Some(btn) = find_button_at(layout, mouse.column, mouse.row) {
                 log_button_click(app, btn);
                 return execute_button(app, btn);
