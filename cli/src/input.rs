@@ -50,16 +50,22 @@ fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
             KeyCode::Up => { if app.export_select > 0 { app.export_select -= 1; } }
             KeyCode::Down => { if app.export_select < 1 { app.export_select += 1; } }
             KeyCode::Enter => {
-                // Need a game to export - use the most recent unfinished game
-                let unfinished = crate::save::load_unfinished(1).ok().and_then(|v| v.into_iter().next());
-                if let Some(record) = unfinished {
-                    let game = crate::continue_game(&record);
+                // "Export All": export every stored game (finished + unfinished)
+                // as a single bundle string.
+                let lang = Lang::from_code(&app.settings.language);
+                let records = crate::save::load_history(1000).unwrap_or_default();
+                if records.is_empty() {
+                    app.screen = AppScreen::Menu;
+                    app.set_message(i18n::t("export.empty", lang), Duration::from_secs(2));
+                } else {
                     let encrypted = app.export_select == 0;
-                    let data = crate::save::export_game(&game, encrypted);
+                    let data = crate::save::export_records(&records, encrypted);
                     if crate::save::copy_to_clipboard(&data) {
-                        let lang = Lang::from_code(&app.settings.language);
                         app.screen = AppScreen::Menu;
                         app.set_message(i18n::t("export.copied", lang), Duration::from_secs(2));
+                    } else {
+                        app.screen = AppScreen::Menu;
+                        app.set_message(i18n::t("export.fail", lang), Duration::from_secs(2));
                     }
                 }
             }
@@ -76,28 +82,39 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
         match key.code {
             KeyCode::Enter => {
                 let data = app.import_buffer.trim().to_string();
-                if let Some((diff_str, answer_str, puzzle_str, given_str)) = crate::save::import_game(&data) {
-                    // Create game from imported data
-                    let coords: Vec<sudokube_core::cube::CubeCoord> = sudokube_core::cube::iter_surface_coords().collect();
-                    let answer = crate::save::deserialize_solution_from(&answer_str, &coords);
-                    let puzzle_grid = crate::save::deserialize_grid_from(&puzzle_str, &given_str, &coords);
-
-                    let difficulty = match diff_str.as_str() {
-                        "easy" => Difficulty::Easy,
-                        "hard" => Difficulty::Hard,
-                        _ => Difficulty::Medium,
-                    };
-
-                    let mut game = GameState::new(puzzle_grid, answer, difficulty);
-                    // Assign next available ID
-                    game.id = Some(crate::save::next_available_id());
-                    let _ = crate::save::save_game(&game);
-                    // Return to menu so the imported game appears in the list
-                    let lang = Lang::from_code(&app.settings.language);
-                    *app = App::new_menu();
-                    app.set_message(i18n::t("import.success", lang), Duration::from_secs(2));
+                let lang = Lang::from_code(&app.settings.language);
+                if let Some(games) = crate::save::import_games(&data) {
+                    // Import every game in the bundle. Leave id = None so the
+                    // DB auto-assigns sequential IDs (auto-increment on conflict).
+                    let coords: Vec<sudokube_core::cube::CubeCoord> =
+                        sudokube_core::cube::iter_surface_coords().collect();
+                    let mut imported = 0usize;
+                    for (diff_str, answer_str, puzzle_str, given_str) in games {
+                        let answer = crate::save::deserialize_solution_from(&answer_str, &coords);
+                        let puzzle_grid =
+                            crate::save::deserialize_grid_from(&puzzle_str, &given_str, &coords);
+                        let difficulty = match diff_str.as_str() {
+                            "easy" => Difficulty::Easy,
+                            "hard" => Difficulty::Hard,
+                            _ => Difficulty::Medium,
+                        };
+                        let mut game = GameState::new(puzzle_grid, answer, difficulty);
+                        game.id = None;
+                        if crate::save::save_game(&game).is_ok() {
+                            imported += 1;
+                        }
+                    }
+                    if imported > 0 {
+                        *app = App::new_menu();
+                        app.set_message(
+                            format!("{} ({})", i18n::t("import.success", lang), imported),
+                            Duration::from_secs(2),
+                        );
+                    } else {
+                        app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));
+                        app.screen = AppScreen::Menu;
+                    }
                 } else {
-                    let lang = Lang::from_code(&app.settings.language);
                     app.set_message(i18n::t("import.fail", lang), Duration::from_secs(2));
                     app.screen = AppScreen::Menu;
                 }

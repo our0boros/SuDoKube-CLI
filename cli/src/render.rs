@@ -202,7 +202,7 @@ fn draw_menu(f: &mut Frame, app: &App) {
         let top = format!("╭{}╮", "─".repeat(inner_sw));
         f.render_widget(Paragraph::new(top).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y, sidebar_w, 1));
 
-        let title = format!("│{:^width$}│", i18n::t("menu.sidebar_title", lang), width = inner_sw);
+        let title = bordered_line(i18n::t("menu.sidebar_title", lang), inner_sw, true);
         f.render_widget(Paragraph::new(title).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)), Rect::new(sidebar_x, box_y + 1, sidebar_w, 1));
 
         let sep = format!("╟{}╢", "─".repeat(inner_sw));
@@ -215,7 +215,7 @@ fn draw_menu(f: &mut Frame, app: &App) {
             i18n::t("game.diff_medium", lang).chars().next().unwrap_or('M'), med_count,
             i18n::t("game.diff_hard", lang).chars().next().unwrap_or('H'), hard_count
         );
-        let stats_line = format!("│{:<width$}│", stats, width = inner_sw);
+        let stats_line = bordered_line(&stats, inner_sw, false);
         f.render_widget(Paragraph::new(stats_line).style(Style::default().fg(Color::Yellow)), Rect::new(sidebar_x, box_y + 3, sidebar_w, 1));
 
         let sep2 = format!("╟{}╢", "─".repeat(inner_sw));
@@ -236,7 +236,7 @@ fn draw_menu(f: &mut Frame, app: &App) {
                 _ => i18n::t("game.diff_medium", lang),
             };
             let text = format!(" {} {} {:02}:{:02}", name, diff_short, r.elapsed_seconds / 60, r.elapsed_seconds % 60);
-            let row_text = format!("│{:<width$}│", text, width = inner_sw);
+            let row_text = bordered_line(&text, inner_sw, false);
             f.render_widget(
                 Paragraph::new(row_text).style(Style::default().fg(Color::DarkGray)),
                 Rect::new(sidebar_x, box_y + 5 + i as u16, sidebar_w, 1),
@@ -254,19 +254,19 @@ fn draw_menu(f: &mut Frame, app: &App) {
     // 提示文字 - 固定在屏幕底部
     let hint_row = area.bottom().saturating_sub(1);
     if !app.message.is_empty() {
-        // Show message if present
-        let msg_chars = app.message.chars().count() as u16;
-        let msg_w = msg_chars.min(area.width);
-        let msg_col = area.x + area.width.saturating_sub(msg_chars) / 2;
+        // Show message if present (use display_width so CJK chars count as 2)
+        let msg_dw = display_width(&app.message) as u16;
+        let msg_w = msg_dw.min(area.width);
+        let msg_col = area.x + area.width.saturating_sub(msg_dw) / 2;
         f.render_widget(
             Paragraph::new(app.message.as_str()).style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
             Rect::new(msg_col, hint_row, msg_w, 1),
         );
     } else {
         let hint = i18n::t("menu.hint_nav", lang);
-        let hint_chars = hint.chars().count() as u16;
-        let hint_w = hint_chars.min(area.width);
-        let hint_col = area.x + area.width.saturating_sub(hint_chars) / 2;
+        let hint_dw = display_width(hint) as u16;
+        let hint_w = hint_dw.min(area.width);
+        let hint_col = area.x + area.width.saturating_sub(hint_dw) / 2;
         f.render_widget(
             Paragraph::new(hint).style(Style::default().fg(Color::White)),
             Rect::new(hint_col, hint_row, hint_w, 1),
@@ -412,7 +412,10 @@ pub fn compute_game_layout_from_rect(area: Rect, app: &App) -> GameLayout {
     );
     let info_w = display_width(&info_text) as u16 + 4;
 
-    let info_area = Rect::new(area.x, info_y, info_w.min(area.width), info_h);
+    // Align the info panel's left border with the grid's outer frame (grid_x - 1)
+    // so the info bar sits directly above the grid instead of sticking out left.
+    let info_x = grid_x.saturating_sub(1).max(area.x);
+    let info_area = Rect::new(info_x, info_y, info_w.min(area.width.saturating_sub(info_x)), info_h);
     let grid_area = Rect::new(grid_x, grid_y, grid_inner_w, grid_inner_h);
     let msg_area = Rect::new(grid_x, msg_y, grid_inner_w, msg_h);
     let btn_area = Rect::new(area.x, btn_y, area.width, btn_h);
@@ -1099,6 +1102,40 @@ fn display_width(s: &str) -> usize {
     s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
 }
 
+/// Left-align `s` in a field of `width` display columns (pad on the right).
+fn pad_right(s: &str, width: usize) -> String {
+    let dw = display_width(s);
+    if dw >= width {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(width - dw))
+    }
+}
+
+/// Center `s` in a field of `width` display columns.
+fn pad_center(s: &str, width: usize) -> String {
+    let dw = display_width(s);
+    if dw >= width {
+        return s.to_string();
+    }
+    let total = width - dw;
+    let left = total / 2;
+    let right = total - left;
+    format!("{}{}{}", " ".repeat(left), s, " ".repeat(right))
+}
+
+/// Build a bordered line `│{padded}│` where `padded` fills `inner_w` display
+/// columns. `center` toggles center vs left alignment. Correctly handles
+/// double-width CJK characters (unlike `format!("{:^width$}")`).
+fn bordered_line(content: &str, inner_w: usize, center: bool) -> String {
+    let padded = if center {
+        pad_center(content, inner_w)
+    } else {
+        pad_right(content, inner_w)
+    };
+    format!("│{}│", padded)
+}
+
 fn format_timer(app: &App) -> String {
     let elapsed = total_elapsed(app);
     format!("{:02}:{:02}", elapsed / 60, elapsed % 60)
@@ -1197,7 +1234,7 @@ fn draw_settings(f: &mut Frame, app: &App) {
         Rect::new(box_x, box_y, box_w, 1),
     );
 
-    let title_line = format!("│{:^width$}│", i18n::t("settings.title", lang), width = inner_w);
+    let title_line = bordered_line(i18n::t("settings.title", lang), inner_w, true);
     f.render_widget(
         Paragraph::new(title_line).style(Style::default().fg(Color::Cyan)),
         Rect::new(box_x, box_y + 1, box_w, 1),
@@ -1240,7 +1277,7 @@ fn draw_settings(f: &mut Frame, app: &App) {
 
     // 提示
     let hint_row = box_y + 3 + content_h;
-    let hint = format!("│{:^width$}│", i18n::t("settings.hint", lang), width = inner_w);
+    let hint = bordered_line(i18n::t("settings.hint", lang), inner_w, true);
     f.render_widget(
         Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)),
         Rect::new(box_x, hint_row, box_w, 1),
@@ -1293,13 +1330,13 @@ fn draw_victory(f: &mut Frame, app: &App) {
         Rect::new(box_x, box_y, box_w, 1),
     );
     // Title
-    let title_line = format!("│{:^width$}│", title, width = inner_w);
+    let title_line = bordered_line(&title, inner_w, true);
     f.render_widget(
         Paragraph::new(title_line).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         Rect::new(box_x, box_y + 1, box_w, 1),
     );
     // Subtitle
-    let sub_line = format!("│{:^width$}│", subtitle, width = inner_w);
+    let sub_line = bordered_line(&subtitle, inner_w, true);
     f.render_widget(
         Paragraph::new(sub_line).style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         Rect::new(box_x, box_y + 2, box_w, 1),
@@ -1319,7 +1356,7 @@ fn draw_victory(f: &mut Frame, app: &App) {
         Rect::new(box_x, box_y + 4, box_w, 1),
     );
     // Bottom + countdown
-    let bot_line = format!("│{:^width$}│", countdown_text, width = inner_w);
+    let bot_line = bordered_line(&countdown_text, inner_w, true);
     f.render_widget(
         Paragraph::new(bot_line).style(Style::default().fg(Color::DarkGray)),
         Rect::new(box_x, box_y + 5, box_w, 1),
@@ -1349,7 +1386,7 @@ fn draw_export_select(f: &mut Frame, app: &App) {
 
     let top = format!("╭{}╮", "─".repeat(inner_w));
     let bot = format!("╰{}╯", "─".repeat(inner_w));
-    let title = format!("│{:^width$}│", i18n::t("menu.export", lang), width = inner_w);
+    let title = bordered_line(i18n::t("menu.export", lang), inner_w, true);
 
     f.render_widget(Paragraph::new(top).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y, box_w, 1));
     f.render_widget(Paragraph::new(title).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + 1, box_w, 1));
@@ -1370,7 +1407,7 @@ fn draw_export_select(f: &mut Frame, app: &App) {
         } else {
             Style::default().bg(Color::Black).fg(Color::White)
         };
-        let line = format!("│{:<width$}│", text, width = inner_w);
+        let line = bordered_line(&text, inner_w, false);
         f.render_widget(Paragraph::new(line).style(style), Rect::new(box_x, box_y + 3 + i as u16, box_w, 1));
     }
     f.render_widget(Paragraph::new(bot).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + box_h, box_w, 1));
@@ -1394,7 +1431,7 @@ fn draw_import_input(f: &mut Frame, app: &App) {
 
     let top = format!("╭{}╮", "─".repeat(inner_w));
     let bot = format!("╰{}╯", "─".repeat(inner_w));
-    let title = format!("│{:^width$}│", i18n::t("menu.import", lang), width = inner_w);
+    let title = bordered_line(i18n::t("menu.import", lang), inner_w, true);
 
     f.render_widget(Paragraph::new(top).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y, box_w, 1));
     f.render_widget(Paragraph::new(title).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + 1, box_w, 1));
@@ -1420,10 +1457,10 @@ fn draw_import_input(f: &mut Frame, app: &App) {
     } else {
         Style::default().fg(Color::White)
     };
-    let input_line = format!("│ {:<width$} │", display_text, width = inner_w - 2);
+    let input_line = format!("│ {} │", pad_right(&display_text, inner_w - 2));
     f.render_widget(Paragraph::new(input_line).style(input_style), Rect::new(box_x, box_y + 3, box_w, 1));
 
-    let hint = format!("│{:^width$}│", "Enter OK / Esc Cancel", width = inner_w);
+    let hint = bordered_line("Enter OK / Esc Cancel", inner_w, true);
     f.render_widget(Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)), Rect::new(box_x, box_y + 4, box_w, 1));
 
     f.render_widget(Paragraph::new(bot).style(Style::default().fg(Color::Cyan)), Rect::new(box_x, box_y + box_h, box_w, 1));
@@ -1487,7 +1524,7 @@ fn draw_generating(f: &mut Frame, app: &App) {
     );
 
     // 文字行
-    let content = format!("│{:^width$}│", text, width = inner_w);
+    let content = bordered_line(&text, inner_w, true);
     f.render_widget(
         Paragraph::new(content).style(Style::default().fg(Color::White)),
         Rect::new(x, y + 1, bar_w, 1),

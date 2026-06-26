@@ -116,6 +116,8 @@ tr_map! {
     "export.encrypted" => { zh: "加密导出", en: "Encrypted Export", ja: "暗号化ｴｸｽﾎﾟｰﾄ" },
     "export.plaintext" => { zh: "明文导出", en: "Plaintext Export", ja: "平文ｴｸｽﾎﾟｰﾄ" },
     "export.copied" => { zh: "已复制到剪贴板", en: "Copied to clipboard", ja: "ｸﾘｯﾌﾟﾎﾞｰﾄﾞにｺﾋﾟｰ" },
+    "export.empty" => { zh: "没有可导出的对局", en: "No games to export", ja: "ｴｸｽﾎﾟｰﾄ対象なし" },
+    "export.fail" => { zh: "导出失败: 剪贴板不可用", en: "Export failed: clipboard unavailable", ja: "ｴｸｽﾎﾟｰﾄ失敗: ｸﾘｯﾌﾟﾎﾞｰﾄﾞ不可" },
     "import.paste" => { zh: "请粘贴对局数据后按 Enter", en: "Paste game data then Enter", ja: "対局ﾃﾞｰﾀを貼付けてEnter" },
     "import.success" => { zh: "导入成功!", en: "Import successful!", ja: "ｲﾝﾎﾟｰﾄ成功!" },
     "import.fail" => { zh: "导入失败: 无效数据", en: "Import failed: invalid data", ja: "ｲﾝﾎﾟｰﾄ失敗: 無効ﾃﾞｰﾀ" },

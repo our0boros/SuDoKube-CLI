@@ -127,7 +127,6 @@ pub fn save_game(state: &GameState) -> Result<i64> {
     }
 }
 
-#[allow(dead_code)]
 pub fn load_history(limit: usize) -> Result<Vec<GameRecord>> {
     load_records("ORDER BY started_at DESC LIMIT ?1", limit)
 }
@@ -244,44 +243,104 @@ pub fn delete_game(id: i64) -> Result<()> {
 
 // ── Export / Import ──
 
-/// Export a game as a string. If encrypted, apply simple XOR obfuscation.
+const XOR_KEY: &[u8] = b"SuDoKube2024";
+
+fn xor_crypt(data: &[u8]) -> Vec<u8> {
+    data.iter().enumerate().map(|(i, &b)| b ^ XOR_KEY[i % XOR_KEY.len()]).collect()
+}
+
+/// Decode an encrypted payload (base64 + XOR) back to the raw string.
+fn decrypt_payload(b64: &str) -> Option<String> {
+    let decoded = base64_decode(b64)?;
+    let decrypted = xor_crypt(&decoded);
+    String::from_utf8(decrypted).ok()
+}
+
+/// Export a single game from a live GameState. Format:
+///   plaintext:  `SUDOKUBE|difficulty|answer|puzzle|given`
+///   encrypted:  `SUDOKUBE!<base64>`
 pub fn export_game(state: &GameState, encrypted: bool) -> String {
     let coords: Vec<CubeCoord> = iter_surface_coords().collect();
     let answer_str = serialize_solution(&state.solution, &coords);
     let puzzle_str = state.grid.serialize(&coords);
     let given_str = serialize_given(&state.grid, &coords);
-
-    // Format: SUDOKUBE|difficulty|answer|puzzle|given
     let raw = format!("SUDOKUBE|{}|{}|{}|{}", state.difficulty.as_str(), answer_str, puzzle_str, given_str);
-
     if encrypted {
-        // Simple XOR with rotating key
-        let key = b"SuDoKube2024";
-        let encoded: Vec<u8> = raw.bytes().enumerate().map(|(i, b)| b ^ key[i % key.len()]).collect();
-        format!("SUDOKUBE!{}", base64_encode(&encoded))
+        format!("SUDOKUBE!{}", base64_encode(&xor_crypt(raw.as_bytes())))
     } else {
         raw
     }
 }
 
-/// Import a game from a string. Returns (difficulty, answer, puzzle, given).
-pub fn import_game(data: &str) -> Option<(String, String, String, String)> {
-    let raw = if data.starts_with("SUDOKUBE!") {
-        // Encrypted
-        let b64 = &data[9..];
-        let decoded = base64_decode(b64)?;
-        let key = b"SuDoKube2024";
-        let decrypted: Vec<u8> = decoded.iter().enumerate().map(|(i, &b)| b ^ key[i % key.len()]).collect();
-        String::from_utf8(decrypted).ok()?
+/// Export multiple games from DB records (batch). Format:
+///   plaintext:  `SUDOKUBES|<count>|<diff1>|<ans1>|<puz1>|<giv1>|...`
+///   encrypted:  `SUDOKUBES!<base64>`
+pub fn export_records(records: &[GameRecord], encrypted: bool) -> String {
+    let coords: Vec<CubeCoord> = iter_surface_coords().collect();
+    let mut parts: Vec<String> = vec!["SUDOKUBES".into(), records.len().to_string()];
+    for r in records {
+        let answer_str = serialize_solution(&r.answer, &coords);
+        let puzzle_str = serialize_solution(&r.puzzle, &coords);
+        let given_str = serialize_solution(&r.given, &coords);
+        parts.push(r.difficulty.clone());
+        parts.push(answer_str);
+        parts.push(puzzle_str);
+        parts.push(given_str);
+    }
+    let raw = parts.join("|");
+    if encrypted {
+        format!("SUDOKUBES!{}", base64_encode(&xor_crypt(raw.as_bytes())))
     } else {
-        data.to_string()
+        raw
+    }
+}
+
+/// Import one or more games from a string. Returns a list of
+/// `(difficulty, answer, puzzle, given)` tuples. Handles both single-game
+/// (`SUDOKUBE`) and batch (`SUDOKUBES`) formats, encrypted or plaintext.
+pub fn import_games(data: &str) -> Option<Vec<(String, String, String, String)>> {
+    let trimmed = data.trim();
+
+    // Decrypt if needed. Note: "SUDOKUBES!" must be checked before "SUDOKUBE!"
+    // because both share the leading "SUDOKUBE" prefix.
+    let raw = if let Some(b64) = trimmed.strip_prefix("SUDOKUBES!") {
+        decrypt_payload(b64)?
+    } else if let Some(b64) = trimmed.strip_prefix("SUDOKUBE!") {
+        decrypt_payload(b64)?
+    } else {
+        trimmed.to_string()
     };
 
-    let parts: Vec<&str> = raw.splitn(5, '|').collect();
-    if parts.len() != 5 || parts[0] != "SUDOKUBE" {
-        return None;
+    // Batch format: SUDOKUBES|<count>|<diff1>|<ans1>|<puz1>|<giv1>|...
+    if let Some(rest) = raw.strip_prefix("SUDOKUBES|") {
+        let parts: Vec<&str> = rest.split('|').collect();
+        let count: usize = parts.first()?.parse().ok()?;
+        if parts.len() != 1 + count * 4 { return None; }
+        let mut result = Vec::with_capacity(count);
+        let mut idx = 1;
+        for _ in 0..count {
+            if idx + 3 >= parts.len() { return None; }
+            result.push((
+                parts[idx].to_string(),
+                parts[idx + 1].to_string(),
+                parts[idx + 2].to_string(),
+                parts[idx + 3].to_string(),
+            ));
+            idx += 4;
+        }
+        return Some(result);
     }
-    Some((parts[1].to_string(), parts[2].to_string(), parts[3].to_string(), parts[4].to_string()))
+
+    // Single-game format: SUDOKUBE|<diff>|<ans>|<puz>|<giv>
+    if let Some(rest) = raw.strip_prefix("SUDOKUBE|") {
+        let parts: Vec<&str> = rest.splitn(4, '|').collect();
+        if parts.len() != 4 { return None; }
+        return Some(vec![
+            (parts[0].to_string(), parts[1].to_string(), parts[2].to_string(), parts[3].to_string()),
+        ]);
+    }
+
+    None
 }
 
 fn base64_encode(data: &[u8]) -> String {
@@ -348,14 +407,4 @@ pub fn copy_to_clipboard(text: &str) -> bool {
         let _ = text;
         false
     }
-}
-
-/// Get next available game ID
-pub fn next_available_id() -> i64 {
-    let conn = match init_db() {
-        Ok(c) => c,
-        Err(_) => return 1,
-    };
-    conn.query_row("SELECT COALESCE(MAX(id), 0) + 1 FROM games", [], |row| row.get(0))
-        .unwrap_or(1)
 }
