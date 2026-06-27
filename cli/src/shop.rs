@@ -306,6 +306,11 @@ pub fn snake_step(app: &mut crate::App) {
             snake.dir.1,
         );
 
+        // 跨面时转换蛇方向，保持3D空间方向不变
+        if new_face != head_face {
+            snake.dir = crate::input::convert_face_dir(head_face, snake.dir.0, snake.dir.1, new_face);
+        }
+
         let new_pos = (new_face, new_u, new_v);
 
         // 撞墙

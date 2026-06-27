@@ -66,6 +66,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
     if app.shop_focused {
         let lang = Lang::from_code(&app.settings.language);
         let catalog_len = crate::shop::shop_catalog().len();
+        let items_per_page: usize = 4;
         match action {
             Some(Action::Cancel) => {
                 app.shop_focused = false;
@@ -76,9 +77,15 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
                 } else {
                     app.shop_selected -= 1;
                 }
+                // 自动翻页：若选中项不在当前页，向上翻页
+                let page = (app.shop_selected / items_per_page) as u16;
+                app.shop_page = page;
             }
             Some(Action::ShopDown) => {
                 app.shop_selected = (app.shop_selected + 1) % catalog_len;
+                // 自动翻页：若选中项不在当前页，向下翻页
+                let page = (app.shop_selected / items_per_page) as u16;
+                app.shop_page = page;
             }
             Some(Action::ShopBuy) => {
                 if let Some(item) = crate::shop::shop_catalog()
@@ -248,6 +255,26 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         Some(Action::DebugHintFace) => {
             if app.settings.debug_mode == "on" {
                 super::navigation::debug_hint_face(app);
+            }
+        }
+        Some(Action::DebugWin) => {
+            if app.settings.debug_mode == "on" {
+                debug_win(app);
+                return EventResult::Continue;
+            }
+        }
+        Some(Action::DebugGoldUp) => {
+            if app.settings.debug_mode == "on" {
+                app.gold += 100;
+                let _ = crate::save::save_setting("player_gold", &app.gold.to_string());
+                app.set_message(format!("💰 +100 → {}", app.gold), Duration::from_secs(2));
+            }
+        }
+        Some(Action::DebugGoldDown) => {
+            if app.settings.debug_mode == "on" {
+                app.gold = (app.gold - 50).max(0);
+                let _ = crate::save::save_setting("player_gold", &app.gold.to_string());
+                app.set_message(format!("💰 -50 → {}", app.gold), Duration::from_secs(2));
             }
         }
         _ => {}
@@ -444,5 +471,41 @@ fn log_button_click(app: &mut App, btn: ButtonId) {
         ButtonId::ToolTarget => "Tool❗",
     };
     app.push_log(label, 50);
+}
+
+/// Debug: 快速胜利
+/// - 贪吃蛇模式：立即吃完所有果实
+/// - 数独模式：Hint 所有空格
+fn debug_win(app: &mut App) {
+    if let Some(snake) = app.snake.as_mut() {
+        // 贪吃蛇：直接吃掉所有果实
+        snake.score = snake.total_fruits;
+        snake.fruits.clear();
+        snake.outcome = shop::SnakeOutcome::Won;
+        return;
+    }
+    // 数独模式：填满所有空格
+    let coords: Vec<_> = app
+        .game
+        .grid
+        .cells
+        .keys()
+        .copied()
+        .filter(|c| {
+            app.game
+                .grid
+                .get(c)
+                .map(|cell| cell.user_value.is_none() && !cell.given)
+                .unwrap_or(false)
+        })
+        .collect();
+    for coord in coords {
+        if let Some(&ans) = app.game.solution.get(&coord) {
+            app.game.set_value(coord, Some(ans));
+        }
+    }
+    if app.game.check_completion() {
+        app.trigger_victory();
+    }
 }
 

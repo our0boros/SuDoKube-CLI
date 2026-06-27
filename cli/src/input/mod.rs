@@ -5,6 +5,7 @@ mod navigation;
 mod settings;
 
 pub use navigation::move_on_surface;
+pub use navigation::convert_face_dir;
 
 use crossterm::event::{Event, KeyEventKind, KeyCode};
 use ratatui::layout::Rect;

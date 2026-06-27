@@ -155,7 +155,7 @@ tr_map! {
     "shop.face_desc" => { zh: "当前面随机填一格", en: "Fill a random cell on face", ja: "現在の面の任意1個" },
     "shop.target" => { zh: "当前选择提示", en: "Target Hint", ja: "選択ﾋﾝﾄ" },
     "shop.target_desc" => { zh: "光标所在格答案", en: "Hint at cursor", ja: "ｶｰｿﾙ位置の答え" },
-    "shop.hint_focused" => { zh: "PgUp/Dn 切换 Enter 购买", en: "PgUp/Dn switch Enter buy", ja: "PgUp/Dn 選択 Enter 購入" },
+    "shop.hint_focused" => { zh: "PgUp/Dn 切换 Enter 购买 Tab 退出", en: "PgUp/Dn switch Enter buy Tab exit", ja: "PgUp/Dn 選択 Enter 購入 Tab 終了" },
     "shop.hint_unfocused" => { zh: "Tab 进入商店", en: "Tab to focus shop", ja: "Tab でｼｮｯﾌﾟ選択" },
     "shop.bought" => { zh: "已购入", en: "Bought", ja: "購入済" },
     "shop.no_gold" => { zh: "金币不足", en: "Not enough gold", ja: "ｺﾞｰﾙﾄﾞ不足" },

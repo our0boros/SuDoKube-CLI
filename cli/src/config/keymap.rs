@@ -91,6 +91,9 @@ pub enum Action {
 
     // ── 调试 ──
     DebugHintFace,
+    DebugWin,
+    DebugGoldUp,
+    DebugGoldDown,
 
     // ── 导入/导出 ──
     ExportUp,
@@ -160,6 +163,9 @@ impl Action {
             Action::ToolSnake5 => "Tool: Snake×5",
             Action::ToolTarget => "Tool: Target",
             Action::DebugHintFace => "Debug: Hint Face",
+            Action::DebugWin => "Debug: Win",
+            Action::DebugGoldUp => "Debug: Gold +100",
+            Action::DebugGoldDown => "Debug: Gold -50",
             Action::ExportUp => "Export Up",
             Action::ExportDown => "Export Down",
             Action::ImportChar => "Import: Type",
@@ -188,7 +194,7 @@ impl Action {
             | Action::SettingsLeft | Action::SettingsRight => ActionGroup::Settings,
             Action::ToolCube | Action::ToolSnake3 | Action::ToolFace
             | Action::ToolSnake5 | Action::ToolTarget => ActionGroup::Tools,
-            Action::DebugHintFace => ActionGroup::Debug,
+            Action::DebugHintFace | Action::DebugWin | Action::DebugGoldUp | Action::DebugGoldDown => ActionGroup::Debug,
             Action::ExportUp | Action::ExportDown => ActionGroup::Export,
             Action::ImportChar | Action::ImportBackspace => ActionGroup::Import,
         }
@@ -447,6 +453,11 @@ impl Default for Keymap {
                 KeyBinding::new(Action::ShopBuy, Key::Char('b')),
                 // 调试
                 KeyBinding::with_mods(Action::DebugHintFace, Key::Char('h'), ModKey { shift: false, alt: true, ctrl: false }),
+                KeyBinding::with_mods(Action::DebugWin, Key::Char('w'), ModKey { shift: false, alt: true, ctrl: false }),
+                KeyBinding::with_mods(Action::DebugGoldUp, Key::Char('='), ModKey { shift: false, alt: true, ctrl: false }),
+                KeyBinding::with_mods(Action::DebugGoldUp, Key::Char('+'), ModKey { shift: false, alt: true, ctrl: false }),
+                KeyBinding::with_mods(Action::DebugGoldDown, Key::Char('-'), ModKey { shift: false, alt: true, ctrl: false }),
+                KeyBinding::with_mods(Action::DebugGoldDown, Key::Char('_'), ModKey { shift: false, alt: true, ctrl: false }),
             ],
             settings: vec![
                 KeyBinding::new(Action::SettingsUp, Key::Up),

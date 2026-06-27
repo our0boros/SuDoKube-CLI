@@ -814,8 +814,9 @@ fn draw_shop_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bor
 
     let catalog = crate::shop::shop_catalog();
     let _item_h: u16 = 3; // 每项 3 行(图标名 + 描述 + 价格/数量)
-    let total_pages = 1u16; // 4 项一页
-    let page = app.shop_page as usize;
+    let items_per_page = 4usize;
+    let total_pages = ((catalog.len() + items_per_page - 1) / items_per_page).max(1) as u16;
+    let page = (app.shop_page as usize).min(total_pages as usize - 1);
 
     let mut lines: Vec<Line> = Vec::new();
 
