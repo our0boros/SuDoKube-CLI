@@ -1,18 +1,19 @@
 mod cube3d;
 mod game;
 mod menu;
-mod overlay;
-pub mod types;
+pub mod overlay;
 mod settings;
+pub mod types;
 mod util;
 
-pub use types::{RenderMode, ButtonId, GameLayout, PagerAction, mode_label};
-pub use util::{cell_at, find_button_at, needs_scrollbar_mode, pager_action_at, shop_item_at};
 pub use game::compute_game_layout_from_rect;
+pub use overlay::rebuild_keymap_actions;
 pub use settings::compute_settings_popup_layout;
+pub use types::{ButtonId, GameLayout, PagerAction, RenderMode, mode_label};
+pub use util::{cell_at, find_button_at, needs_scrollbar_mode, pager_action_at, shop_item_at};
 
-use ratatui::Frame;
 use crate::{App, AppScreen};
+use ratatui::Frame;
 
 /// 主渲染入口：根据当前屏幕分发绘制
 pub fn draw(f: &mut Frame, app: &mut App) {
@@ -40,6 +41,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         AppScreen::ImportInput => {
             menu::draw_menu(f, app);
             overlay::draw_import_overlay(f, app);
+        }
+        AppScreen::KeymapConfig => {
+            overlay::draw_keymap_config(f, app);
         }
     }
 

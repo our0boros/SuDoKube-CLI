@@ -15,7 +15,9 @@ pub(super) fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> 
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
             // 设置弹窗可能覆盖在 Menu 上，需要用 Settings 画面解析按键
-            let action = app.keymap.resolve(AppScreen::Settings, false, key.code, key.modifiers);
+            let action = app
+                .keymap
+                .resolve(AppScreen::Settings, false, key.code, key.modifiers);
             match action {
                 Some(Action::SettingsUp) => {
                     if app.settings_ui.selected > 0 {
@@ -38,23 +40,19 @@ pub(super) fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> 
                 }
                 Some(Action::SettingsRight) | Some(Action::Confirm) => {
                     let idx = app.settings_ui.selected;
-                    // Keymap 字段: 进入映射编辑模式
+                    // Keymap 字段: 进入映射编辑界面
                     if app.settings_ui.fields[idx].label == "Keymap" {
-                        let actions = app.keymap.all_actions();
-                        app.settings_ui.keymap_edit = Some(crate::KeymapEditState {
-                            actions,
-                            selected: 0,
-                            scroll: 0,
-                            awaiting_key: false,
-                            rebinding_index: None,
-                        });
+                        app.settings_ui.visible = false;
+                        app.screen = AppScreen::KeymapConfig;
                     } else if matches!(action, Some(Action::SettingsRight)) {
                         app.settings_ui.fields[idx].cycle_next();
                         app.settings_ui.apply_to(&mut app.settings);
                         app.settings.save_to_db();
                     }
                     // Confirm on non-keymap field: 关闭设置
-                    if matches!(action, Some(Action::Confirm)) && app.settings_ui.fields[idx].label != "Keymap" {
+                    if matches!(action, Some(Action::Confirm))
+                        && app.settings_ui.fields[idx].label != "Keymap"
+                    {
                         app.settings.save_to_db();
                         app.settings_ui.visible = false;
                         if app.screen == AppScreen::Settings {
@@ -149,4 +147,3 @@ pub(super) fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> 
 fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
     x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
 }
-

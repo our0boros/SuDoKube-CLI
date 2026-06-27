@@ -44,6 +44,7 @@ pub enum AppScreen {
     Victory,
     ExportSelect,
     ImportInput,
+    KeymapConfig,
 }
 
 // ── 异步生成状态 ──

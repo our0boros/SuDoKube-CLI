@@ -100,6 +100,13 @@ tr_map! {
     "settings.debug_mode" => { zh: "调试模式", en: "Debug Mode", ja: "ﾃﾞﾊﾞｯｸﾞ" },
     "settings.language" => { zh: "语言", en: "Language", ja: "言語" },
     "settings.blink_highlight" => { zh: "选号闪烁", en: "Blink Highlight", ja: "選択点滅" },
+    "settings.keymap_title" => { zh: "键位设置", en: "Keymap Config", ja: "ｷｰﾏｯﾋﾟﾝｸﾞ" },
+    "settings.keymap_hint" => { zh: "↑↓选择 Enter修改 Esc返回", en: "↑↓ Select Enter Edit Esc Back", ja: "↑↓ 選択 Enter変更 Esc戻る" },
+    "settings.keymap_hint_wait" => { zh: "请按新键位或 Esc 取消", en: "Press new key or Esc to cancel", ja: "新ｷｰ押すかEscｷｬﾝｾﾙ" },
+    "settings.keymap_err_reserved" => { zh: "无法修改保留键 Esc/Enter", en: "Cannot change reserved key Esc/Enter", ja: "予約ｷｰは変更不可 Esc/Enter" },
+    "settings.keymap_err_conflict" => { zh: "键位冲突，同场景已有此键", en: "Key conflict: exists in same scene", ja: "ｷｰﾏｯﾋﾟﾝｸﾞ競合：同ｼｰﾝに存在" },
+    "settings.keymap_reset" => { zh: "[ 重置为默认 ]", en: "[ Reset to Default ]", ja: "[ 初期値に戻す ]" },
+    "settings.keymap_reset_done" => { zh: "键位已重置为默认", en: "Keymap reset to default", ja: "ｷｰﾏｯﾋﾟﾝｸﾞを初期値に戻しました" },
 
     // Debug
     "debug.hint" => { zh: "已提示", en: "Hinted", ja: "ﾋﾝﾄ済み" },

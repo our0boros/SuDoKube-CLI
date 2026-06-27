@@ -6,9 +6,9 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use super::util::*;
 use crate::i18n::{self, Lang};
 use crate::{App, total_elapsed};
-use super::util::*;
 
 use std::time::Instant;
 
@@ -55,7 +55,6 @@ pub(super) fn draw_confirm_delete_overlay(f: &mut Frame, app: &App) {
 }
 
 // ── 菜单画面 ──
-
 
 pub(super) fn draw_victory(f: &mut Frame, app: &App) {
     let area = f.area();
@@ -413,5 +412,263 @@ pub(super) fn draw_generating(f: &mut Frame, app: &App) {
     );
 }
 
+// ── 键位配置界面 ──
 
+pub(super) fn draw_keymap_config(f: &mut Frame, app: &mut App) {
+    let area = f.area();
+    let lang = Lang::from_code(&app.settings.language);
 
+    // 初始化 keymap_edit 状态（如果为空）
+    if app.settings_ui.keymap_edit.is_none() {
+        app.settings_ui.keymap_edit = Some(crate::KeymapEditState {
+            actions: Vec::new(),
+            selected: 0,
+            scroll: 0,
+            awaiting_key: false,
+            rebinding_index: None,
+        });
+        rebuild_keymap_actions(app);
+    }
+
+    let ke = app.settings_ui.keymap_edit.as_ref().unwrap();
+    let total = ke.actions.len();
+    let visible_rows = (area.height as usize).saturating_sub(8); // 标题2 + 底部3 + 边框2 + 重置选项1
+
+    // 自动滚动
+    {
+        let ke = app.settings_ui.keymap_edit.as_mut().unwrap();
+        let selected = ke.selected;
+        let scroll = ke.scroll as usize;
+        if selected < scroll {
+            ke.scroll = selected as u16;
+        } else if selected >= scroll + visible_rows {
+            ke.scroll = (selected - visible_rows + 1) as u16;
+        }
+    }
+    let scroll = app.settings_ui.keymap_edit.as_ref().unwrap().scroll as usize;
+    let selected = app.settings_ui.keymap_edit.as_ref().unwrap().selected;
+
+    // 标题
+    let title = format!(" {} ", i18n::t("settings.keymap_title", lang));
+    let title_w = area.width.min(50);
+    let title_x = area.x + (area.width.saturating_sub(title_w)) / 2;
+    f.render_widget(
+        Block::bordered()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(Span::styled(
+                &title,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+        Rect::new(title_x, area.y, title_w, area.height),
+    );
+
+    let inner = Rect::new(title_x + 1, area.y + 1, title_w - 2, area.height - 2);
+
+    // 绘制每个 Action 行
+    let mut row = 0usize;
+    for i in scroll..total {
+        if row >= visible_rows {
+            break;
+        }
+        let action = app.settings_ui.keymap_edit.as_ref().unwrap().actions[i];
+        let is_selected = i == selected;
+        let is_awaiting = app
+            .settings_ui
+            .keymap_edit
+            .as_ref()
+            .map(|ke| ke.awaiting_key && ke.rebinding_index == Some(i))
+            .unwrap_or(false);
+
+        let y = inner.y + row as u16;
+        let bindings = app.keymap.find_binding(action);
+        let key_display: String = if bindings.is_empty() {
+            "---".to_string()
+        } else {
+            bindings
+                .iter()
+                .map(|b| b.display_label())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        let prefix = if is_selected { "> " } else { "  " };
+        let action_name = action.display_name();
+        let text = format!("{}{}: {}", prefix, action_name, key_display);
+
+        let style = if is_selected {
+            Style::default().bg(Color::White).fg(Color::Black)
+        } else if is_awaiting {
+            Style::default().bg(Color::Yellow).fg(Color::Black)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        f.render_widget(
+            Paragraph::new(text).style(style),
+            Rect::new(inner.x, y, inner.width, 1),
+        );
+        row += 1;
+    }
+
+    // 重置选项
+    let reset_y = inner.y + inner.height.saturating_sub(3);
+    let is_reset_selected = selected == total;
+    let reset_text = format!(
+        "{} {}",
+        if is_reset_selected { ">" } else { " " },
+        i18n::t("settings.keymap_reset", lang)
+    );
+    let reset_style = if is_reset_selected {
+        Style::default().bg(Color::White).fg(Color::Black)
+    } else {
+        Style::default().fg(Color::Yellow)
+    };
+    f.render_widget(
+        Paragraph::new(reset_text).style(reset_style),
+        Rect::new(inner.x, reset_y, inner.width, 1),
+    );
+
+    // 底部提示
+    let awaiting_key = app
+        .settings_ui
+        .keymap_edit
+        .as_ref()
+        .map(|ke| ke.awaiting_key)
+        .unwrap_or(false);
+    let hint_text = if awaiting_key {
+        i18n::t("settings.keymap_hint_wait", lang)
+    } else {
+        i18n::t("settings.keymap_hint", lang)
+    };
+    let hint_y = inner.y + inner.height.saturating_sub(1);
+    f.render_widget(
+        Paragraph::new(hint_text).style(Style::default().fg(Color::DarkGray)),
+        Rect::new(inner.x, hint_y, inner.width, 1),
+    );
+
+    // 错误消息（红色显示）
+    if let Some(ref err) = app.settings_ui.keymap_error {
+        let err_y = inner.y + inner.height.saturating_sub(2);
+        f.render_widget(
+            Paragraph::new(err.clone()).style(Style::default().fg(Color::Red)),
+            Rect::new(inner.x, err_y, inner.width, 1),
+        );
+    }
+}
+
+/// 重建键位配置列表（根据 Debug 模式过滤）
+pub fn rebuild_keymap_actions(app: &mut App) {
+    let debug_mode = app.settings.debug_mode.clone();
+    let all_actions = app.keymap.all_actions();
+
+    let mut filtered: Vec<crate::config::Action> = all_actions
+        .into_iter()
+        .filter(|a| {
+            // Debug 相关的 Action 只在 Debug 模式开启时显示
+            let is_debug_action = matches!(
+                a,
+                crate::config::Action::DebugHintFace
+                    | crate::config::Action::DebugWin
+                    | crate::config::Action::DebugGoldUp
+                    | crate::config::Action::DebugGoldDown
+            );
+            if is_debug_action && debug_mode != "on" {
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+
+    // 按场景分组排序
+    filtered.sort_by(|a, b| {
+        let scene_a = action_scene_priority(a);
+        let scene_b = action_scene_priority(b);
+        scene_a.cmp(&scene_b)
+    });
+
+    if let Some(ref mut ke) = app.settings_ui.keymap_edit {
+        ke.actions = filtered;
+        ke.selected = 0;
+        ke.scroll = 0;
+    }
+}
+
+/// 获取 Action 的场景优先级（用于排序）
+fn action_scene_priority(action: &crate::config::Action) -> i32 {
+    match action {
+        // 全局
+        crate::config::Action::Quit
+        | crate::config::Action::Confirm
+        | crate::config::Action::Cancel => 0,
+        // 菜单
+        crate::config::Action::MenuUp
+        | crate::config::Action::MenuDown
+        | crate::config::Action::MenuSelect
+        | crate::config::Action::MenuDelete
+        | crate::config::Action::MenuForceDelete
+        | crate::config::Action::MenuExport
+        | crate::config::Action::MenuImport => 1,
+        // 游戏-导航
+        crate::config::Action::CursorUp
+        | crate::config::Action::CursorDown
+        | crate::config::Action::CursorLeft
+        | crate::config::Action::CursorRight
+        | crate::config::Action::FaceUp
+        | crate::config::Action::FaceDown
+        | crate::config::Action::FaceLeft
+        | crate::config::Action::FaceRight => 2,
+        // 游戏-面跳转
+        crate::config::Action::FaceFront
+        | crate::config::Action::FaceBack
+        | crate::config::Action::FaceLeftJump
+        | crate::config::Action::FaceRightJump
+        | crate::config::Action::FaceTop
+        | crate::config::Action::FaceBottom => 3,
+        // 游戏-操作
+        crate::config::Action::Number(_)
+        | crate::config::Action::Erase
+        | crate::config::Action::Hint
+        | crate::config::Action::Undo
+        | crate::config::Action::ToggleGuidance
+        | crate::config::Action::ToggleMode
+        | crate::config::Action::NewGame => 4,
+        // 按钮
+        crate::config::Action::BtnPagePrev | crate::config::Action::BtnPageNext => 5,
+        // 商店
+        crate::config::Action::ShopFocus
+        | crate::config::Action::ShopUp
+        | crate::config::Action::ShopDown
+        | crate::config::Action::ShopBuy => 6,
+        // 贪吃蛇
+        crate::config::Action::SnakeUp
+        | crate::config::Action::SnakeDown
+        | crate::config::Action::SnakeLeft
+        | crate::config::Action::SnakeRight
+        | crate::config::Action::SnakeQuit => 7,
+        // 设置
+        crate::config::Action::SettingsUp
+        | crate::config::Action::SettingsDown
+        | crate::config::Action::SettingsLeft
+        | crate::config::Action::SettingsRight => 8,
+        // 工具
+        crate::config::Action::ToolCube
+        | crate::config::Action::ToolSnake3
+        | crate::config::Action::ToolFace
+        | crate::config::Action::ToolSnake5
+        | crate::config::Action::ToolTarget => 9,
+        // 调试
+        crate::config::Action::DebugHintFace
+        | crate::config::Action::DebugWin
+        | crate::config::Action::DebugGoldUp
+        | crate::config::Action::DebugGoldDown => 10,
+        // 导入/导出
+        crate::config::Action::ExportUp
+        | crate::config::Action::ExportDown
+        | crate::config::Action::ImportChar
+        | crate::config::Action::ImportBackspace => 11,
+    }
+}

@@ -159,6 +159,10 @@ pub struct SettingsState {
     pub visible: bool,
     /// 键位映射编辑模式
     pub keymap_edit: Option<KeymapEditState>,
+    /// 键位配置错误消息（红色显示）
+    pub keymap_error: Option<String>,
+    /// 上次的 debug_mode 状态（用于检测变化）
+    pub keymap_debug_mode: String,
 }
 
 impl SettingsState {
@@ -245,6 +249,8 @@ impl SettingsState {
             hover_arrow: None,
             visible: false,
             keymap_edit: None,
+            keymap_error: None,
+            keymap_debug_mode: s.debug_mode.clone(),
         }
     }
 
