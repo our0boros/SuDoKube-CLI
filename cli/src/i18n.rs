@@ -99,6 +99,7 @@ tr_map! {
     "settings.cube_height" => { zh: "Cube高度", en: "Cube Height", ja: "Cube高さ" },
     "settings.debug_mode" => { zh: "调试模式", en: "Debug Mode", ja: "ﾃﾞﾊﾞｯｸﾞ" },
     "settings.language" => { zh: "语言", en: "Language", ja: "言語" },
+    "settings.blink_highlight" => { zh: "选号闪烁", en: "Blink Highlight", ja: "選択点滅" },
 
     // Debug
     "debug.hint" => { zh: "已提示", en: "Hinted", ja: "ﾋﾝﾄ済み" },

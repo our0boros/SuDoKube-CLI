@@ -78,6 +78,7 @@ pub struct AppSettings {
     pub debug_mode: String,         // "off", "on"
     pub language: String,           // "zh", "en", "ja"
     pub naming_mode: String,        // "vivid", "numeric"
+    pub blink_highlight: String,    // "off", "on" — 选中数字时是否闪烁
 }
 
 impl Default for AppSettings {
@@ -97,6 +98,7 @@ impl Default for AppSettings {
             debug_mode: "off".into(),
             language: lang,
             naming_mode: "vivid".into(),
+            blink_highlight: "off".into(),
         }
     }
 }
@@ -158,6 +160,10 @@ impl AppSettings {
                 .ok()
                 .flatten()
                 .unwrap_or(def.naming_mode),
+            blink_highlight: save::load_setting("blink_highlight")
+                .ok()
+                .flatten()
+                .unwrap_or(def.blink_highlight),
         }
     }
 
@@ -175,6 +181,7 @@ impl AppSettings {
         let _ = save::save_setting("debug_mode", &self.debug_mode);
         let _ = save::save_setting("language", &self.language);
         let _ = save::save_setting("naming_mode", &self.naming_mode);
+        let _ = save::save_setting("blink_highlight", &self.blink_highlight);
     }
 }
 
@@ -529,6 +536,7 @@ impl SettingsState {
         let debug_modes = vec!["off".into(), "on".into()];
         let languages = vec!["zh".into(), "en".into(), "ja".into()];
         let naming_modes = vec!["vivid".into(), "numeric".into()];
+        let blink_modes = vec!["off".into(), "on".into()];
 
         let fields = vec![
             SettingsField::new("Cell Width", &s.standard_cell_width.to_string(), widths),
@@ -544,6 +552,7 @@ impl SettingsState {
             SettingsField::new("Debug Mode", &s.debug_mode, debug_modes),
             SettingsField::new("Language", &s.language, languages),
             SettingsField::new("Naming Mode", &s.naming_mode, naming_modes),
+            SettingsField::new("Blink Highlight", &s.blink_highlight, blink_modes),
         ];
         Self {
             fields,
@@ -569,6 +578,7 @@ impl SettingsState {
         s.debug_mode = self.fields[10].value.clone();
         s.language = self.fields[11].value.clone();
         s.naming_mode = self.fields[12].value.clone();
+        s.blink_highlight = self.fields[13].value.clone();
     }
 }
 
@@ -614,9 +624,11 @@ fn run_app(
     let mut last_blink = Instant::now();
 
     loop {
-        // 闪烁定时器
+        // 闪烁定时器(仅在设置开启时切换)
         let now = Instant::now();
-        if now.duration_since(last_blink) >= Duration::from_millis(500) {
+        if app.settings.blink_highlight == "on"
+            && now.duration_since(last_blink) >= Duration::from_millis(500)
+        {
             app.blink_on = !app.blink_on;
             last_blink = now;
         }

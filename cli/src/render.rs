@@ -187,7 +187,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
         AppScreen::Generating => draw_generating(f, app),
         AppScreen::Victory => draw_victory(f, app),
-        AppScreen::ExportSelect => draw_export_select(f, app),
+        AppScreen::ExportSelect => {
+            draw_menu(f, app);
+            draw_export_overlay(f, app);
+        }
         AppScreen::ImportInput => {
             draw_menu(f, app);
             draw_import_overlay(f, app);
@@ -760,8 +763,9 @@ fn build_layout(
     });
 
     // ── 左列：Status / Navigator / Logs ──
+    // Status 高度: 4 (标题+面+时间+剩余) + 1 (进度条) + 9 (1~9 数字剩余) + 2 (边框) = 16
     let left_layout = Layout::vertical([
-        Constraint::Length(6),
+        Constraint::Length(16),
         Constraint::Length(9),
         Constraint::Fill(1),
     ]);
@@ -1072,7 +1076,28 @@ fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, b
         "░".repeat(bar_w.saturating_sub(filled_w))
     );
 
-    let lines = vec![
+    // 数字 1~9 的剩余数量(防漏题,固定上限 6*9=54)
+    // 角落权重 3,边权重 2,面中心权重 1
+    let digit_lines: Vec<Line> = (0..9)
+        .map(|i| {
+            let remain = app.digit_remaining[i];
+            let n = (i + 1) as u8;
+            // 缺题高亮(<= 0 视为已漏完,需关注)
+            let color = if remain <= 0 {
+                Color::Red
+            } else if remain <= 3 {
+                Color::Yellow
+            } else {
+                Color::White
+            };
+            Line::from(Span::styled(
+                format!(" {}: {:>2}/54 ", n, remain),
+                Style::default().fg(color),
+            ))
+        })
+        .collect();
+
+    let mut lines = vec![
         Line::from(vec![Span::styled(
             game_name.clone(),
             Style::default()
@@ -1092,8 +1117,9 @@ fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, b
             format_timer(app),
         )),
         Line::from(format!(" {}/{} ({}%)", remaining, total, progress_pct)),
-        Line::from(progress_bar),
     ];
+    lines.extend(digit_lines);
+    lines.push(Line::from(progress_bar));
 
     draw_framed_panel(
         f,
@@ -1468,12 +1494,18 @@ fn draw_cell_row(
 
         let guide_group = parse_color(&app.settings.guide_group_color);
         let guide_same = parse_color(&app.settings.guide_same_color);
+        // 闪烁逻辑:开启时 blink_on 在两态间切换;关闭时使用反色(白底黑字)保持高亮可见
+        let blink_setting_on = app.settings.blink_highlight == "on";
+        let blink_on = blink_setting_on && app.blink_on;
         let style = if selected && is_error {
             Style::default().bg(Color::White).fg(Color::Red)
-        } else if selected && app.blink_on {
+        } else if selected && blink_on {
             Style::default().bg(Color::White).fg(Color::Black)
-        } else if selected {
+        } else if selected && blink_setting_on {
             Style::default().bg(Color::Gray).fg(Color::White)
+        } else if selected {
+            // 闪烁关闭:反色(白底黑字),保证可视
+            Style::default().bg(Color::White).fg(Color::Black)
         } else if in_same_group && has_same_number {
             Style::default().bg(guide_same).fg(Color::White)
         } else if in_same_group {
@@ -2503,41 +2535,52 @@ fn draw_victory(f: &mut Frame, app: &App) {
     );
 }
 
-// ── 导出选择画面 ──
+// ── 导出选择弹窗 ──
 
-fn draw_export_select(f: &mut Frame, app: &App) {
+/// 导出选择弹窗(Popup 模式,叠加在菜单画面上)
+fn draw_export_overlay(f: &mut Frame, app: &App) {
     let area = f.area();
     let lang = Lang::from_code(&app.settings.language);
-    f.render_widget(
-        Block::default().style(Style::default().bg(Color::Black)),
-        area,
+
+    // 弹窗尺寸
+    let box_w = 40u16;
+    let box_h = 6u16;
+
+    // 居中弹窗
+    let popup_area = Rect::new(
+        area.x + area.width.saturating_sub(box_w) / 2,
+        area.y + area.height.saturating_sub(box_h) / 2,
+        box_w,
+        box_h,
     );
 
-    let box_w = 34u16;
-    let box_h = 5u16;
-    let box_x = area.x + area.width.saturating_sub(box_w) / 2;
-    let box_y = area.y + area.height.saturating_sub(box_h) / 2;
+    // 清除背景
+    f.render_widget(Clear, popup_area);
+
     let inner_w = box_w as usize - 2;
 
+    // 顶部边框
     let top = format!("╭{}╮", "─".repeat(inner_w));
-    let bot = format!("╰{}╯", "─".repeat(inner_w));
-    let title = bordered_line(i18n::t("menu.export", lang), inner_w, true);
-
     f.render_widget(
         Paragraph::new(top).style(Style::default().fg(Color::Cyan)),
-        Rect::new(box_x, box_y, box_w, 1),
-    );
-    f.render_widget(
-        Paragraph::new(title).style(Style::default().fg(Color::Cyan)),
-        Rect::new(box_x, box_y + 1, box_w, 1),
+        Rect::new(popup_area.x, popup_area.y, box_w, 1),
     );
 
+    // 标题
+    let title = bordered_line(i18n::t("menu.export", lang), inner_w, true);
+    f.render_widget(
+        Paragraph::new(title).style(Style::default().fg(Color::Cyan)),
+        Rect::new(popup_area.x, popup_area.y + 1, box_w, 1),
+    );
+
+    // 分隔线
     let sep = format!("╟{}╢", "─".repeat(inner_w));
     f.render_widget(
         Paragraph::new(sep).style(Style::default().fg(Color::Cyan)),
-        Rect::new(box_x, box_y + 2, box_w, 1),
+        Rect::new(popup_area.x, popup_area.y + 2, box_w, 1),
     );
 
+    // 选项
     let opts = [
         i18n::t("export.encrypted", lang),
         i18n::t("export.plaintext", lang),
@@ -2554,12 +2597,22 @@ fn draw_export_select(f: &mut Frame, app: &App) {
         let line = bordered_line(&text, inner_w, false);
         f.render_widget(
             Paragraph::new(line).style(style),
-            Rect::new(box_x, box_y + 3 + i as u16, box_w, 1),
+            Rect::new(popup_area.x, popup_area.y + 3 + i as u16, box_w, 1),
         );
     }
+
+    // 提示
+    let hint = bordered_line("Enter OK / Esc Cancel", inner_w, true);
+    f.render_widget(
+        Paragraph::new(hint).style(Style::default().fg(Color::DarkGray)),
+        Rect::new(popup_area.x, popup_area.y + 5, box_w, 1),
+    );
+
+    // 底部
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
     f.render_widget(
         Paragraph::new(bot).style(Style::default().fg(Color::Cyan)),
-        Rect::new(box_x, box_y + box_h, box_w, 1),
+        Rect::new(popup_area.x, popup_area.y + 6, box_w, 1),
     );
 }
 
