@@ -14,7 +14,8 @@ pub(super) fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> 
 
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
-            let action = app.keymap.resolve(app.screen, false, key.code, key.modifiers);
+            // 设置弹窗可能覆盖在 Menu 上，需要用 Settings 画面解析按键
+            let action = app.keymap.resolve(AppScreen::Settings, false, key.code, key.modifiers);
             match action {
                 Some(Action::SettingsUp) => {
                     if app.settings_ui.selected > 0 {
