@@ -50,9 +50,9 @@ impl ItemType {
     pub fn icon(&self) -> &'static str {
         match self {
             ItemType::Cube => "🎲",
-            ItemType::Snake3 => "🐍",
+            ItemType::Snake3 => "🐍3",
             ItemType::Face => "🔀",
-            ItemType::Snake5 => "🐍",
+            ItemType::Snake5 => "🐍5",
             ItemType::Target => "❗",
         }
     }
@@ -133,18 +133,14 @@ pub fn shop_catalog() -> Vec<ShopItem> {
 /// 慢于目标时间时按比例降低,但不低于 1 金币。
 ///
 /// 最高收益 = 3 × 10 = 30 金币(可购买 3 次立方体提示)
-pub fn calculate_gold_reward(difficulty: Difficulty, elapsed_seconds: u64) -> i32 {
-    let target_time = match difficulty {
-        Difficulty::Easy => 180,   // 3 min
-        Difficulty::Medium => 480,  // 8 min
-        Difficulty::Hard => 1500,   // 25 min
-    };
+pub fn calculate_gold_reward(difficulty: Difficulty, elapsed_seconds: u64, config: &crate::config::GameConfig) -> i32 {
+    let target_time = config.gold_target_secs(difficulty);
     // 最高收益: 3 次提示 (以立方体提示为基准)
     let max_reward = 3 * ItemType::Cube.price();
 
     let elapsed = elapsed_seconds.max(1) as f64;
     let ratio = target_time as f64 / elapsed;
-    let bonus = ratio.clamp(0.1, 1.5);
+    let bonus = ratio.clamp(config.gold_reward_min_multiplier, config.gold_reward_max_multiplier);
     (max_reward as f64 * bonus).round().max(1.0) as i32
 }
 
@@ -233,8 +229,9 @@ pub fn start_snake_game(app: &mut crate::App, fruit_count: u8) {
     }
     // 蛇起始: 在当前面中央,6 节身体向左铺开(头在右)
     let start_face = app.current_face;
-    let mut body = Vec::with_capacity(6);
-    for i in 0..6u8 {
+    let body_len = app.config.snake_initial_body_len;
+    let mut body = Vec::with_capacity(body_len);
+    for i in 0..body_len as u8 {
         let u = 4u8.saturating_sub(i); // 头 u=4, 依次 u=3,2,1,0,...
         body.push((start_face, u, 4));
     }
@@ -275,9 +272,9 @@ pub fn start_snake_game(app: &mut crate::App, fruit_count: u8) {
         dir: (1, 0), // 向右
         fruits,
         walls,
-        deadline: now + Duration::from_secs(30),
+        deadline: now + Duration::from_secs(app.config.snake_timeout_secs),
         last_step: now,
-        step_interval: Duration::from_millis(200),
+        step_interval: Duration::from_millis(app.config.snake_step_interval_ms),
         outcome: SnakeOutcome::Running,
         score: 0,
         total_fruits: fruit_count as u32,
