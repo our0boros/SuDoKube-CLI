@@ -9,6 +9,7 @@ use std::time::Instant;
 use sudokube_core::cube::Face;
 
 use crate::i18n::{self, Lang};
+use crate::shop;
 use crate::{App, AppScreen, AppSettings, MenuItem, total_elapsed};
 
 // ── 常量 ──
@@ -78,6 +79,12 @@ pub enum ButtonId {
     ToggleGuidance,
     ToggleMode,
     Quit,
+    // 道具工具
+    ToolCube,
+    ToolSnake3,
+    ToolSnake5,
+    ToolFace,
+    ToolTarget,
 }
 
 /// 按钮布局信息（用于鼠标点击检测）。
@@ -178,7 +185,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 draw_settings_overlay(f, app);
             }
         }
-        AppScreen::Game => draw_game(f, app),
+        AppScreen::Game => {
+            draw_game(f, app);
+        }
         AppScreen::Settings => {
             // 兼容旧路径: 强制显示一次(防止 set_message 后转屏)
             app.settings_ui.visible = true;
@@ -484,10 +493,22 @@ fn draw_menu(f: &mut Frame, app: &App) {
             Rect::new(msg_col, hint_row, msg_w, 1),
         );
     } else {
+        // 提示行:左侧金币 + 右侧操作提示
+        let gold_text = format!("💰 {}", app.gold);
         let hint = i18n::t("menu.hint_nav", lang);
+        // 左:金币 (靠左)
+        let gold_w = display_width(&gold_text) as u16;
+        if area.width >= gold_w + 4 {
+            f.render_widget(
+                Paragraph::new(gold_text.as_str())
+                    .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Rect::new(area.x + 1, hint_row, gold_w, 1),
+            );
+        }
+        // 右:操作提示
         let hint_dw = display_width(hint) as u16;
         let hint_w = hint_dw.min(area.width);
-        let hint_col = area.x + area.width.saturating_sub(hint_dw) / 2;
+        let hint_col = area.x + area.width.saturating_sub(hint_dw + 1);
         f.render_widget(
             Paragraph::new(hint).style(Style::default().fg(Color::White)),
             Rect::new(hint_col, hint_row, hint_w, 1),
@@ -841,6 +862,26 @@ fn build_layout(
     let cube_area = Rect::new(cube_x, cube_y, cube_area_w, cube_area_h);
 
     // ── 按钮定义（使用自定义 Button Widget）──
+    // 道具按钮 label 包含持有数量,例如 "🎲×2"
+    let tool_defs: Vec<(String, ButtonId, crate::ButtonTheme)> = [
+        (shop::ItemType::Cube, ButtonId::ToolCube, crate::THEME_SUCCESS),
+        (shop::ItemType::Snake3, ButtonId::ToolSnake3, crate::THEME_SUCCESS),
+        (shop::ItemType::Face, ButtonId::ToolFace, crate::THEME_SUCCESS),
+        (shop::ItemType::Snake5, ButtonId::ToolSnake5, crate::THEME_SUCCESS),
+        (
+            shop::ItemType::Target,
+            ButtonId::ToolTarget,
+            crate::THEME_SUCCESS,
+        ),
+    ]
+    .iter()
+    .map(|(item, id, theme): &(shop::ItemType, ButtonId, crate::ButtonTheme)| {
+        let count = app.inventory.get(item).copied().unwrap_or(0);
+        let label = format!("{}{}", item.icon(), count);
+        (label, *id, *theme)
+    })
+    .collect();
+
     let btn_defs: Vec<(String, ButtonId, u16, crate::ButtonTheme)> = (1..=9u8)
         .map(|n| {
             let label = format!("[{}]", n);
@@ -862,6 +903,10 @@ fn build_layout(
                 (label.to_string(), *id, w, *theme)
             }),
         )
+        .chain(tool_defs.iter().map(|(label, id, theme)| {
+            let w = label.chars().count() as u16;
+            (label.clone(), *id, w, *theme)
+        }))
         .collect();
 
     // 按钮栏布局 —— 整行无外边框，padding=1 列
@@ -1043,6 +1088,52 @@ fn draw_framed_panel(
 fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
     let lang = Lang::from_code(&app.settings.language);
     let panel = layout.status_panel;
+
+    // 贪吃蛇模式:显示蛇状态
+    if let Some(snake) = app.snake.as_ref() {
+        let secs_left = snake
+            .deadline
+            .saturating_duration_since(std::time::Instant::now())
+            .as_secs();
+        let speed_ms = snake.step_interval.as_millis();
+        let dir_name = match snake.dir {
+            (1, 0) => "→",
+            (-1, 0) => "←",
+            (0, -1) => "↑",
+            (0, 1) => "↓",
+            _ => "?",
+        };
+        let lines = vec![
+            Line::from(Span::styled(
+                " 🐍 Snake Mode",
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(format!(" ⏱  {}s", secs_left)),
+            Line::from(format!(" 🍒 {}/{}", snake.score, snake.total_fruits)),
+            Line::from(format!(" 🧱 {}", snake.walls.len())),
+            Line::from(format!(" 📏 {}", snake.body.len())),
+            Line::from(format!(" ⚡ {}ms", speed_ms)),
+            Line::from(format!(" 🧭 {}", dir_name)),
+            Line::from(""),
+            Line::from(Span::styled(
+                format!(" {}", i18n::t("status.inventory", lang)),
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            )),
+        ];
+        draw_framed_panel(
+            f,
+            panel,
+            i18n::t("panel.status", lang),
+            Color::Cyan,
+            border,
+            bg,
+            lines,
+        );
+        return;
+    }
+
     let inner_w = (panel.width.saturating_sub(4)) as usize; // 可用文本宽度(去边框去前导空格)
     let total = app.game.grid.cells.len();
     let filled = app
@@ -1120,6 +1211,31 @@ fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, b
     ];
     lines.extend(digit_lines);
     lines.push(Line::from(progress_bar));
+    // ── 道具背包 ──
+    let is_debug = app.settings.debug_mode == "on";
+    lines.push(Line::from(Span::styled(
+        format!(" {}: ", i18n::t("status.inventory", lang)),
+        Style::default()
+            .fg(Color::Magenta)
+            .add_modifier(Modifier::BOLD),
+    )));
+    for item in shop::ItemType::all().iter() {
+        let count = app.inventory.get(item).copied().unwrap_or(0);
+        // 数量为 0 时显示警告样式(debug 模式不算警告)
+        let is_warn = count == 0 && !is_debug;
+        let color = if is_debug && count == 0 {
+            Color::DarkGray // debug 模式下空也允许使用
+        } else if is_warn {
+            Color::Red
+        } else {
+            Color::White
+        };
+        let warn_mark = if is_warn { "!" } else { " " };
+        lines.push(Line::from(Span::styled(
+            format!(" {}{} {}", warn_mark, item.icon(), count),
+            Style::default().fg(color),
+        )));
+    }
 
     draw_framed_panel(
         f,
@@ -1133,9 +1249,49 @@ fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, b
 }
 
 /// Navigator 面板：方向键 / WASD / FBLRTU 提示 + 当前面指示。
+/// 贪吃蛇模式时替换为蛇操作指导。
 fn draw_navigator_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, border: Color) {
     let lang = Lang::from_code(&app.settings.language);
     let panel = layout.navigator_panel;
+
+    // 贪吃蛇模式:操作指导
+    if app.snake.is_some() {
+        let face_color = face_to_color(app.current_face);
+        let lines = vec![
+            Line::from(Span::styled(
+                " 🐍 Snake Controls",
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(" ↑↓←→ / WASD"),
+            Line::from("   转向"),
+            Line::from(""),
+            Line::from(" 🍒 吃果实→填答案"),
+            Line::from(" 🧱 撞墙→失败"),
+            Line::from(" ⬡ 撞自己→失败"),
+            Line::from(" ⏱  超时→失败"),
+            Line::from(""),
+            Line::from(" Esc/Q 退出"),
+            Line::from(Span::styled(
+                format!(
+                    " ● {} ({})",
+                    app.current_face.short_code(),
+                    face_name(app.current_face, lang)
+                ),
+                Style::default().fg(face_color).add_modifier(Modifier::BOLD),
+            )),
+        ];
+        draw_framed_panel(
+            f,
+            panel,
+            i18n::t("panel.navigator", lang),
+            Color::Green,
+            border,
+            bg,
+            lines,
+        );
+        return;
+    }
+
     let face_color = face_to_color(app.current_face);
     let (up, down, left, right, _back) = arrow_neighbor_faces(app.current_face);
 
@@ -1207,30 +1363,132 @@ fn draw_shop_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bor
         return;
     }
 
-    let lines = vec![
-        Line::from(Span::styled(
-            i18n::t("panel.shop_hint1", lang),
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        )),
-        Line::from(Span::styled(
-            i18n::t("panel.shop_hint2", lang),
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        )),
-    ];
+    let catalog = crate::shop::shop_catalog();
+    let _item_h: u16 = 3; // 每项 3 行(图标名 + 描述 + 价格/数量)
+    let total_pages = 1u16; // 4 项一页
+    let page = app.shop_page as usize;
 
+    let mut lines: Vec<Line> = Vec::new();
+
+    // 顶部:金币余额
+    lines.push(Line::from(vec![
+        Span::styled("💰 ", Style::default().fg(Color::Yellow)),
+        Span::styled(
+            format!("{}", app.gold),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("  {}/{} ", page + 1, total_pages),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]));
+    lines.push(Line::from(Span::styled(
+        "─".repeat(panel.width.saturating_sub(2) as usize),
+        Style::default().fg(Color::Magenta),
+    )));
+
+    // 商品列表
+    let items_per_page = 4usize;
+    let start = page * items_per_page;
+    let end = (start + items_per_page).min(catalog.len());
+    for (idx, shop_item) in catalog.iter().enumerate().take(end).skip(start) {
+        let i = idx; // 全局索引(用于选中态)
+        let sel = i == app.shop_selected && app.shop_focused;
+        let count = app.inventory.get(&shop_item.item_type).copied().unwrap_or(0);
+        let _title_color = if sel {
+            Color::White
+        } else {
+            Color::Magenta
+        };
+        let bg_style = if sel {
+            Style::default().bg(Color::Magenta).fg(Color::White)
+        } else {
+            Style::default().bg(bg)
+        };
+        // 第 1 行: 图标 + 名称 + 持有数量
+        let name = i18n_item_name(shop_item.item_type, lang);
+        let line1 = format!(
+            "{} {} ×{}",
+            shop_item.item_type.icon(),
+            name,
+            count
+        );
+        lines.push(Line::from(Span::styled(line1, bg_style)));
+        // 第 2 行: 描述
+        let desc = i18n_item_desc(shop_item.item_type, lang);
+        lines.push(Line::from(Span::styled(
+            format!("  {}", desc),
+            Style::default().fg(Color::DarkGray),
+        )));
+        // 第 3 行: 价格
+        let afford = app.gold >= shop_item.price;
+        let price_color = if sel {
+            Color::White
+        } else if afford {
+            Color::Yellow
+        } else {
+            Color::Red
+        };
+        let price_bg = if sel {
+            Style::default().bg(Color::Magenta).fg(Color::White)
+        } else {
+            Style::default().bg(bg).fg(price_color)
+        };
+        let price_text = format!("  💰 {}  ", shop_item.price);
+        lines.push(Line::from(Span::styled(price_text, price_bg)));
+    }
+
+    // 底部提示
+    lines.push(Line::from(Span::styled(
+        "─".repeat(panel.width.saturating_sub(2) as usize),
+        Style::default().fg(Color::Magenta),
+    )));
+    let hint = if app.shop_focused {
+        i18n::t("shop.hint_focused", lang)
+    } else {
+        i18n::t("shop.hint_unfocused", lang)
+    };
+    lines.push(Line::from(Span::styled(
+        hint,
+        Style::default()
+            .fg(if app.shop_focused {
+                Color::Magenta
+            } else {
+                Color::DarkGray
+            })
+            .add_modifier(Modifier::ITALIC),
+    )));
+
+    let title_color = if app.shop_focused {
+        Color::Magenta
+    } else {
+        Color::Magenta
+    };
+    let frame_border = if app.shop_focused {
+        Color::Magenta
+    } else {
+        border
+    };
     draw_framed_panel(
         f,
         panel,
         i18n::t("panel.shop", lang),
-        Color::Magenta,
-        border,
+        title_color,
+        frame_border,
         bg,
         lines,
     );
+}
+
+/// 商品名称 i18n
+fn i18n_item_name(item: crate::shop::ItemType, lang: Lang) -> &'static str {
+    i18n::t(item.name_key(), lang)
+}
+/// 商品描述 i18n
+fn i18n_item_desc(item: crate::shop::ItemType, lang: Lang) -> &'static str {
+    i18n::t(item.desc_key(), lang)
 }
 
 fn draw_sudoku_grid(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, _border: Color) {
@@ -1453,6 +1711,9 @@ fn draw_cell_row(
 
     let mut spans: Vec<Span> = Vec::new();
 
+    // 贪吃蛇模式: 渲染蛇/果实/墙壁
+    let snake_mode = app.snake.is_some();
+
     for u in 0..9usize {
         // 竖线
         let v_char = if u % 3 == 0 { '║' } else { '│' };
@@ -1463,68 +1724,111 @@ fn draw_cell_row(
 
         // 单元格内容
         let coord = app.current_face.to_cube(u as u8, v as u8);
-        let cell = app.game.grid.get(&coord);
-        let selected = app.cursor == (u as u8, v as u8);
-        let is_given = cell.map(|c| c.given).unwrap_or(false);
-        let value = cell.and_then(|c| c.user_value);
-        let is_error = value.map_or(false, |n| is_wrong(app, coord, n));
+        let face_pos = (app.current_face, u as u8, v as u8);
 
-        let (in_same_group, has_same_number) = if app.guidance && !selected {
-            let sel_coord = app.current_face.to_cube(app.cursor.0, app.cursor.1);
-            let same_row = app.cursor.1 == v as u8;
-            let same_col = app.cursor.0 == u as u8;
-            let same_box = app.cursor.0 / 3 == u as u8 / 3 && app.cursor.1 / 3 == v as u8 / 3;
-            let in_group = same_row || same_col || same_box;
-            let sel_value = app.game.grid.get(&sel_coord).and_then(|c| c.user_value);
-            let same_num = value.is_some() && value == sel_value;
-            (in_group, same_num)
-        } else {
-            (false, false)
-        };
+        if snake_mode {
+            // 贪吃蛇模式渲染
+            let mid_line = ch / 2;
+            let mut content = " ".repeat(cw);
+            let mut style = Style::default().fg(Color::White);
 
-        let mid_line = ch / 2;
-        let mut content = " ".repeat(cw);
-        if line == mid_line {
-            if let Some(n) = value {
-                let s = ((b'0' + n) as char).to_string();
-                let start = (cw - 1) / 2;
-                content.replace_range(start..start + 1, &s);
+            if let Some(snake) = &app.snake {
+                let is_head = snake.body.first() == Some(&face_pos);
+                let is_body = !is_head && snake.body.contains(&face_pos);
+                let is_fruit = snake.fruits.contains(&face_pos);
+                let is_wall = snake.walls.contains(&face_pos);
+
+                if is_head && line == mid_line {
+                    let s = "◉".to_string();
+                    let start = (cw - 1) / 2;
+                    content.replace_range(start..start + 1, &s);
+                    style = Style::default().fg(Color::Green).add_modifier(Modifier::BOLD);
+                } else if is_body {
+                    if line == mid_line {
+                        let s = "●".to_string();
+                        let start = (cw - 1) / 2;
+                        content.replace_range(start..start + 1, &s);
+                    }
+                    style = Style::default().fg(Color::Green);
+                } else if is_fruit && line == mid_line {
+                    let s = "●".to_string();
+                    let start = (cw - 1) / 2;
+                    content.replace_range(start..start + 1, &s);
+                    style = Style::default().fg(Color::Red).add_modifier(Modifier::BOLD);
+                } else if is_wall {
+                    content = "▓".repeat(cw);
+                    style = Style::default().fg(Color::DarkGray);
+                } else {
+                    // 空格: 在蛇模式下灰显
+                    style = Style::default().fg(Color::DarkGray);
+                }
             }
-        }
-
-        let guide_group = parse_color(&app.settings.guide_group_color);
-        let guide_same = parse_color(&app.settings.guide_same_color);
-        // 闪烁逻辑:开启时 blink_on 在两态间切换;关闭时使用反色(白底黑字)保持高亮可见
-        let blink_setting_on = app.settings.blink_highlight == "on";
-        let blink_on = blink_setting_on && app.blink_on;
-        let style = if selected && is_error {
-            Style::default().bg(Color::White).fg(Color::Red)
-        } else if selected && blink_on {
-            Style::default().bg(Color::White).fg(Color::Black)
-        } else if selected && blink_setting_on {
-            Style::default().bg(Color::Gray).fg(Color::White)
-        } else if selected {
-            // 闪烁关闭:反色(白底黑字),保证可视
-            Style::default().bg(Color::White).fg(Color::Black)
-        } else if in_same_group && has_same_number {
-            Style::default().bg(guide_same).fg(Color::White)
-        } else if in_same_group {
-            Style::default().bg(guide_group).fg(Color::White)
-        } else if has_same_number {
-            Style::default().bg(guide_same).fg(Color::White)
-        } else if is_error {
-            Style::default().fg(Color::Red)
-        } else if is_given {
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD)
-        } else if value.is_some() {
-            Style::default().fg(border)
+            spans.push(Span::styled(content, style));
         } else {
-            Style::default().fg(Color::White)
-        };
+            // 正常数独模式渲染
+            let cell = app.game.grid.get(&coord);
+            let selected = app.cursor == (u as u8, v as u8);
+            let is_given = cell.map(|c| c.given).unwrap_or(false);
+            let value = cell.and_then(|c| c.user_value);
+            let is_error = value.map_or(false, |n| is_wrong(app, coord, n));
 
-        spans.push(Span::styled(content, style));
+            let (in_same_group, has_same_number) = if app.guidance && !selected {
+                let sel_coord = app.current_face.to_cube(app.cursor.0, app.cursor.1);
+                let same_row = app.cursor.1 == v as u8;
+                let same_col = app.cursor.0 == u as u8;
+                let same_box = app.cursor.0 / 3 == u as u8 / 3 && app.cursor.1 / 3 == v as u8 / 3;
+                let in_group = same_row || same_col || same_box;
+                let sel_value = app.game.grid.get(&sel_coord).and_then(|c| c.user_value);
+                let same_num = value.is_some() && value == sel_value;
+                (in_group, same_num)
+            } else {
+                (false, false)
+            };
+
+            let mid_line = ch / 2;
+            let mut content = " ".repeat(cw);
+            if line == mid_line {
+                if let Some(n) = value {
+                    let s = ((b'0' + n) as char).to_string();
+                    let start = (cw - 1) / 2;
+                    content.replace_range(start..start + 1, &s);
+                }
+            }
+
+            let guide_group = parse_color(&app.settings.guide_group_color);
+            let guide_same = parse_color(&app.settings.guide_same_color);
+            // 闪烁逻辑:开启时 blink_on 在两态间切换;关闭时使用反色(白底黑字)保持高亮
+            let blink_setting_on = app.settings.blink_highlight == "on";
+            let blink_on = blink_setting_on && app.blink_on;
+            let style = if selected && is_error {
+                Style::default().bg(Color::White).fg(Color::Red)
+            } else if selected && blink_on {
+                Style::default().bg(Color::White).fg(Color::Black)
+            } else if selected && blink_setting_on {
+                Style::default().bg(Color::Gray).fg(Color::White)
+            } else if selected {
+                // 闪烁关闭:反色(白底黑字),保证可视
+                Style::default().bg(Color::White).fg(Color::Black)
+            } else if in_same_group && has_same_number {
+                Style::default().bg(guide_same).fg(Color::White)
+            } else if in_same_group {
+                Style::default().bg(guide_group).fg(Color::White)
+            } else if has_same_number {
+                Style::default().bg(guide_same).fg(Color::White)
+            } else if is_error {
+                Style::default().fg(Color::Red)
+            } else if is_given {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else if value.is_some() {
+                Style::default().fg(border)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            spans.push(Span::styled(content, style));
+        }
     }
 
     // 右侧封口
@@ -1550,6 +1854,10 @@ fn draw_message(f: &mut Frame, layout: &GameLayout, app: &App, _bg: Color) {
 
 fn draw_button_bar(f: &mut Frame, layout: &GameLayout, app: &App, _bg: Color, border: Color) {
     if layout.btn_area.width < 4 || layout.btn_area.height < 1 {
+        return;
+    }
+    // 贪吃蛇模式下隐藏按钮栏
+    if app.snake.is_some() {
         return;
     }
 
@@ -1935,6 +2243,40 @@ pub fn find_button_at(layout: &GameLayout, col: u16, row: u16) -> Option<ButtonI
         }
     }
     None
+}
+
+/// 检测鼠标位置是否落在商店的某一项上
+///
+/// 商店面板布局(参考 draw_shop_panel,inner 是 panel-1):
+///  inner row 0  金币余额 + 页码
+///  inner row 1  分隔线
+///  inner row 2  第 1 项: 名称
+///  inner row 3  第 1 项: 描述
+///  inner row 4  第 1 项: 价格
+///  inner row 5  第 2 项: 名称
+///  ...           ...
+///  inner row 13 第 4 项: 价格
+///  inner row 14 分隔线
+///  inner row 15 提示
+pub fn shop_item_at(layout: &GameLayout, col: u16, row: u16) -> Option<usize> {
+    let panel = layout.shop_area;
+    if col < panel.x || col >= panel.x + panel.width {
+        return None;
+    }
+    if row < panel.y || row >= panel.y + panel.height {
+        return None;
+    }
+    // inner = panel - 边框 1 行
+    let inner_y = row.saturating_sub(panel.y + 1);
+    let item_top = 2;
+    if inner_y < item_top {
+        return None;
+    }
+    let item_row = (inner_y - item_top) / 3;
+    if item_row >= 4 {
+        return None;
+    }
+    Some(item_row as usize)
 }
 
 /// 翻页动作
@@ -2471,7 +2813,7 @@ fn draw_victory(f: &mut Frame, app: &App) {
     );
 
     let box_w = 36u16;
-    let box_h = 6u16;
+    let box_h = 7u16;
     let box_x = area.x + area.width.saturating_sub(box_w) / 2;
     let box_y = area.y + area.height.saturating_sub(box_h) / 2;
 
@@ -2510,7 +2852,7 @@ fn draw_victory(f: &mut Frame, app: &App) {
         Paragraph::new(sep).style(Style::default().fg(Color::Yellow)),
         Rect::new(box_x, box_y + 3, box_w, 1),
     );
-    // Info
+    // Info: diff + time
     let diff = app.game.difficulty.as_str();
     let elapsed = total_elapsed(app);
     let info_line = format!(
@@ -2522,11 +2864,25 @@ fn draw_victory(f: &mut Frame, app: &App) {
         Paragraph::new(info_line).style(Style::default().fg(Color::White)),
         Rect::new(box_x, box_y + 4, box_w, 1),
     );
+    // 金币收益
+    let reward_line = format!(
+        "│ {:^width$} │",
+        format!("💰 +{} gold  (total: {})", app.last_reward, app.gold),
+        width = inner_w - 2
+    );
+    f.render_widget(
+        Paragraph::new(reward_line).style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Rect::new(box_x, box_y + 5, box_w, 1),
+    );
     // Bottom + countdown
     let bot_line = bordered_line(&countdown_text, inner_w, true);
     f.render_widget(
         Paragraph::new(bot_line).style(Style::default().fg(Color::DarkGray)),
-        Rect::new(box_x, box_y + 5, box_w, 1),
+        Rect::new(box_x, box_y + 6, box_w, 1),
     );
     // Bottom border
     f.render_widget(
@@ -2785,3 +3141,6 @@ fn draw_generating(f: &mut Frame, app: &App) {
         Rect::new(x, y + 3, bar_w, 1),
     );
 }
+
+
+

@@ -8,9 +8,10 @@ use sudokube_core::cube::{Difficulty, Face};
 use crate::i18n::{self, Lang};
 use crate::render::{
     ButtonId, GameLayout, PagerAction, cell_at, compute_game_layout_from_rect, find_button_at,
-    mode_label, pager_action_at,
+    mode_label, pager_action_at, shop_item_at,
 };
 use crate::save::delete_game;
+use crate::shop;
 use crate::{App, AppScreen, MenuItem, current_coord};
 use std::time::Instant;
 use sudokube_core::game_state::GameState;
@@ -513,6 +514,82 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         return EventResult::Continue;
     }
 
+    // 贪吃蛇小游戏运行中: 方向键控蛇,Esc/Q 退出;禁用其他游戏操作
+    if app.snake.is_some() {
+        if let Some(snake) = app.snake.as_mut() {
+            if let Some(new_dir) = match key.code {
+                KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('W') => Some((0i8, -1i8)),
+                KeyCode::Down | KeyCode::Char('s') | KeyCode::Char('S') => Some((0, 1)),
+                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('A') => Some((-1, 0)),
+                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('D') => Some((1, 0)),
+                _ => None,
+            } {
+                // 禁止 180° 反向
+                if (new_dir.0 + snake.dir.0, new_dir.1 + snake.dir.1) != (0, 0) {
+                    snake.dir = new_dir;
+                }
+            } else {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
+                        if let Some(msg) = shop::end_snake_game(app) {
+                            app.set_message(msg, Duration::from_secs(2));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        return EventResult::Continue;
+    }
+
+    // Tab: 切换商店焦点
+    if key.code == KeyCode::Tab {
+        app.toggle_shop_focus();
+        return EventResult::Continue;
+    }
+
+    // 商店焦点激活时,PageUp/Down + Enter/B 用于商店
+    if app.shop_focused {
+        let lang = Lang::from_code(&app.settings.language);
+        let catalog_len = crate::shop::shop_catalog().len();
+        match key.code {
+            KeyCode::Esc => {
+                app.shop_focused = false;
+            }
+            KeyCode::PageUp => {
+                if app.shop_selected == 0 {
+                    app.shop_selected = catalog_len - 1;
+                } else {
+                    app.shop_selected -= 1;
+                }
+            }
+            KeyCode::PageDown => {
+                app.shop_selected = (app.shop_selected + 1) % catalog_len;
+            }
+            KeyCode::Enter | KeyCode::Char('b') | KeyCode::Char('B') => {
+                if let Some(item) = crate::shop::shop_catalog()
+                    .get(app.shop_selected)
+                    .map(|s| s.item_type)
+                {
+                    if app.buy_item(item) {
+                        let name = i18n::t(item.name_key(), lang);
+                        app.set_message(
+                            format!("{} {}×1", i18n::t("shop.bought", lang), name),
+                            Duration::from_secs(2),
+                        );
+                    } else {
+                        app.set_message(
+                            i18n::t("shop.no_gold", lang).to_string(),
+                            Duration::from_secs(2),
+                        );
+                    }
+                }
+            }
+            _ => return EventResult::Continue,
+        }
+        return EventResult::Continue;
+    }
+
     // 按钮栏翻页快捷键: '[' 上一页, ']' 下一页
     if key.code == KeyCode::Char('[') || key.code == KeyCode::Char('{') {
         if app.btn_page > 0 {
@@ -568,10 +645,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             let lang = Lang::from_code(&app.settings.language);
             app.push_log(i18n::t("debug.hint", lang), 50);
             if app.game.check_completion() {
-                app.game.completed = true;
-                app.screen = AppScreen::Victory;
-                app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
-                let _ = crate::save::save_game(&app.game);
+                app.trigger_victory();
                 return EventResult::Continue;
             }
             app.set_message("已提示", Duration::from_secs(2));
@@ -604,10 +678,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
                 50,
             );
             if app.game.check_completion() {
-                app.game.completed = true;
-                app.screen = AppScreen::Victory;
-                app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
-                let _ = crate::save::save_game(&app.game);
+                app.trigger_victory();
                 return EventResult::Continue;
             }
         }
@@ -720,6 +791,30 @@ fn handle_mouse(app: &mut App, layout: &GameLayout, mouse: MouseEvent) -> EventR
             }
         }
         MouseEventKind::Down(MouseButton::Left) => {
+            // 商店区点击:优先于按钮/格子
+            if let Some(item_idx) = shop_item_at(layout, mouse.column, mouse.row) {
+                app.shop_selected = item_idx;
+                app.shop_focused = true;
+                if let Some(item) = crate::shop::shop_catalog()
+                    .get(item_idx)
+                    .map(|s| s.item_type)
+                {
+                    let lang = Lang::from_code(&app.settings.language);
+                    if app.buy_item(item) {
+                        let name = i18n::t(item.name_key(), lang);
+                        app.set_message(
+                            format!("{} {}×1", i18n::t("shop.bought", lang), name),
+                            Duration::from_secs(2),
+                        );
+                    } else {
+                        app.set_message(
+                            i18n::t("shop.no_gold", lang).to_string(),
+                            Duration::from_secs(2),
+                        );
+                    }
+                }
+                return EventResult::Continue;
+            }
             // 翻页控件优先
             if let Some(action) = pager_action_at(layout, mouse.column, mouse.row) {
                 apply_pager_action(app, layout, action);
@@ -761,10 +856,7 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
             app.game.set_value(coord, Some(n));
             app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, Some(n));
             if app.game.check_completion() {
-                app.game.completed = true;
-                app.screen = AppScreen::Victory;
-                app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
-                let _ = crate::save::save_game(&app.game);
+                app.trigger_victory();
                 return EventResult::Continue;
             }
         }
@@ -802,6 +894,31 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
             );
         }
         ButtonId::Quit => return EventResult::BackToMenu,
+        ButtonId::ToolCube => {
+            if app.use_tool(shop::ItemType::Cube) {
+                return EventResult::Continue;
+            }
+        }
+        ButtonId::ToolSnake3 => {
+            if app.use_tool(shop::ItemType::Snake3) {
+                return EventResult::Continue;
+            }
+        }
+        ButtonId::ToolSnake5 => {
+            if app.use_tool(shop::ItemType::Snake5) {
+                return EventResult::Continue;
+            }
+        }
+        ButtonId::ToolFace => {
+            if app.use_tool(shop::ItemType::Face) {
+                return EventResult::Continue;
+            }
+        }
+        ButtonId::ToolTarget => {
+            if app.use_tool(shop::ItemType::Target) {
+                return EventResult::Continue;
+            }
+        }
     }
     app.game.selected = Some(current_coord(app));
     EventResult::Continue
@@ -826,6 +943,11 @@ fn log_button_click(app: &mut App, btn: ButtonId) {
         }
         ButtonId::ToggleMode => "Mode",
         ButtonId::Quit => "Menu",
+        ButtonId::ToolCube => "Tool🎲",
+        ButtonId::ToolSnake3 => "Tool🐍3",
+        ButtonId::ToolSnake5 => "Tool🐍5",
+        ButtonId::ToolFace => "Tool🔀",
+        ButtonId::ToolTarget => "Tool❗",
     };
     app.push_log(label, 50);
 }
@@ -872,7 +994,7 @@ fn move_cursor_with_wrap(app: &mut App, dx: i8, dy: i8) {
     }
 }
 
-fn move_on_surface(face: Face, cursor: (u8, u8), dx: i8, dy: i8) -> (Face, (u8, u8)) {
+pub fn move_on_surface(face: Face, cursor: (u8, u8), dx: i8, dy: i8) -> (Face, (u8, u8)) {
     let (u, v) = (cursor.0 as i8, cursor.1 as i8);
     let nu = u + dx;
     let nv = v + dy;
@@ -1018,10 +1140,7 @@ fn debug_hint_face(app: &mut App) {
         }
     }
     if app.game.check_completion() {
-        app.game.completed = true;
-        app.screen = AppScreen::Victory;
-        app.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
-        let _ = crate::save::save_game(&app.game);
+        app.trigger_victory();
         return;
     }
     let lang = Lang::from_code(&app.settings.language);

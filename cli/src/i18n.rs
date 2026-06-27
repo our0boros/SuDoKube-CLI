@@ -143,6 +143,46 @@ tr_map! {
     "panel.shop" => { zh: "商店", en: "Shop", ja: "ｼｮｯﾌﾟ" },
     "panel.shop_hint1" => { zh: "[ 此区域预留 ]", en: "[ Reserved Area ]", ja: "[ 予約領域 ]" },
     "panel.shop_hint2" => { zh: "[ 商店即将上线 ]", en: "[ Shop coming soon ]", ja: "[ ｼｮｯﾌﾟ準備中 ]" },
+
+    // Shop items
+    "shop.cube" => { zh: "随机立方体提示", en: "Cube Hint", ja: "全体ﾋﾝﾄ" },
+    "shop.cube_desc" => { zh: "随机填一格答案", en: "Fill a random cell", ja: "任意の1個を埋める" },
+    "shop.snake3" => { zh: "贪吃蛇×3", en: "Snake×3", ja: "ｽﾈｰｸ×3" },
+    "shop.snake3_desc" => { zh: "贪吃蛇小游戏,3个果实", en: "Snake mini-game, 3 fruits", ja: "ｽﾈｰｸｹﾞｰﾑ,果実3個" },
+    "shop.snake5" => { zh: "贪吃蛇×5", en: "Snake×5", ja: "ｽﾈｰｸ×5" },
+    "shop.snake5_desc" => { zh: "贪吃蛇小游戏,5个果实", en: "Snake mini-game, 5 fruits", ja: "ｽﾈｰｸｹﾞｰﾑ,果実5個" },
+    "shop.face" => { zh: "随机当前面提示", en: "Face Hint", ja: "面ﾋﾝﾄ" },
+    "shop.face_desc" => { zh: "当前面随机填一格", en: "Fill a random cell on face", ja: "現在の面の任意1個" },
+    "shop.target" => { zh: "当前选择提示", en: "Target Hint", ja: "選択ﾋﾝﾄ" },
+    "shop.target_desc" => { zh: "光标所在格答案", en: "Hint at cursor", ja: "ｶｰｿﾙ位置の答え" },
+    "shop.hint_focused" => { zh: "PgUp/Dn 切换 Enter 购买", en: "PgUp/Dn switch Enter buy", ja: "PgUp/Dn 選択 Enter 購入" },
+    "shop.hint_unfocused" => { zh: "Tab 进入商店", en: "Tab to focus shop", ja: "Tab でｼｮｯﾌﾟ選択" },
+    "shop.bought" => { zh: "已购入", en: "Bought", ja: "購入済" },
+    "shop.no_gold" => { zh: "金币不足", en: "Not enough gold", ja: "ｺﾞｰﾙﾄﾞ不足" },
+
+    // Tool usage
+    "tool.no_count" => { zh: "道具数量不足", en: "Item not available", ja: "道具なし" },
+    "tool.cube_done" => { zh: "已随机填一格", en: "Filled a random cell", ja: "1個埋めた" },
+    "tool.face_done" => { zh: "已当前面填一格", en: "Filled on this face", ja: "この面に1個埋めた" },
+    "tool.target_done" => { zh: "已填光标格", en: "Filled at cursor", ja: "ｶｰｿﾙ位置を埋めた" },
+    "tool.not_empty" => { zh: "该格非空", en: "Cell not empty", ja: "空ではない" },
+    "tool.no_empty" => { zh: "无空格可填", en: "No empty cell", ja: "空きなし" },
+    "tool.no_empty_face" => { zh: "当前面无空格", en: "No empty cell on face", ja: "面に空きなし" },
+    "tool.snake_todo" => { zh: "贪吃蛇功能开发中", en: "Snake game coming soon", ja: "ｽﾈｰｸ準備中" },
+
+    // Status panel
+    "status.inventory" => { zh: "道具", en: "Items", ja: "道具" },
+
+    // Victory extra
+    "victory.reward" => { zh: "金币 +{}", en: "Gold +{}", ja: "ｺﾞｰﾙﾄﾞ +{}" },
+    "victory.total_gold" => { zh: "总计: {}", en: "Total: {}", ja: "合計: {}" },
+
+    // Snake mini-game
+    "snake.running" => { zh: "进行中", en: "Running", ja: "進行中" },
+    "snake.win" => { zh: "🐍 吃到所有果实!", en: "🐍 All fruits eaten!", ja: "🐍 全部食べた!" },
+    "snake.lose" => { zh: "🐍 蛇结束了", en: "🐍 Snake over", ja: "🐍 終了" },
+    "snake.exit" => { zh: "🐍 已退出", en: "🐍 Exited", ja: "🐍 終了" },
+    "snake.hint" => { zh: "↑↓←→ / WASD 转向  ·  Esc/Q 退出", en: "↑↓←→ / WASD steer · Esc/Q quit", ja: "↑↓←→ / WASD 操作 · Esc/Q 終了" },
 }
 
 /// Adjective names for vivid naming mode

@@ -2,6 +2,7 @@ mod i18n;
 mod input;
 mod render;
 mod save;
+mod shop;
 mod widgets;
 
 pub use widgets::{
@@ -312,6 +313,20 @@ pub struct App {
     /// - 面中心位置: 放置时 -1
     /// 擦除时反向加回
     pub digit_remaining: [i32; 9],
+    /// 局外金币
+    pub gold: i32,
+    /// 道具背包(每种道具持有数量,购买后增加,使用时减少)
+    pub inventory: std::collections::HashMap<shop::ItemType, u32>,
+    /// 商店当前选中项
+    pub shop_selected: usize,
+    /// 商店当前页(每页 4 项)
+    pub shop_page: u16,
+    /// 商店是否获得焦点(激活时方向键/Enter 用于浏览与购买)
+    pub shop_focused: bool,
+    /// 最近一次结算获得的金币(胜利画面展示用)
+    pub last_reward: i32,
+    /// 贪吃蛇小游戏状态(运行中时为 Some)
+    pub snake: Option<shop::SnakeState>,
 }
 
 impl App {
@@ -349,6 +364,17 @@ impl App {
             overflow_notice_elapsed: None,
             confirm_delete_id: None,
             digit_remaining: [54; 9],
+            gold: save::load_setting("player_gold")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+            inventory: std::collections::HashMap::new(),
+            shop_selected: 0,
+            shop_page: 0,
+            shop_focused: false,
+            last_reward: 0,
+            snake: None,
         }
     }
 
@@ -357,11 +383,70 @@ impl App {
             screen: AppScreen::Game,
             game,
             victory_countdown: None,
+            shop_focused: false,
             ..Self::new_menu()
         };
         app.btn_page = 0;
         app.recompute_digit_remaining();
         app
+    }
+
+    /// 购买一个商店商品,扣减金币并加到背包。
+    /// 成功返回 true;金币不足返回 false。
+    pub fn buy_item(&mut self, item: shop::ItemType) -> bool {
+        let price = item.price();
+        if self.gold < price {
+            return false;
+        }
+        self.gold -= price;
+        let _ = save::save_setting("player_gold", &self.gold.to_string());
+        *self.inventory.entry(item).or_insert(0) += 1;
+        true
+    }
+
+    /// 使用一个道具(扣减背包数量),debug 模式下不消耗。
+    /// 数量不足返回 false。
+    pub fn consume_item(&mut self, item: shop::ItemType) -> bool {
+        if self.settings.debug_mode == "on" {
+            return true;
+        }
+        let count = self.inventory.get(&item).copied().unwrap_or(0);
+        if count == 0 {
+            return false;
+        }
+        if count == 1 {
+            self.inventory.remove(&item);
+        } else {
+            *self.inventory.entry(item).or_insert(0) -= 1;
+        }
+        true
+    }
+
+    /// 切换商店焦点状态
+    pub fn toggle_shop_focus(&mut self) {
+        self.shop_focused = !self.shop_focused;
+    }
+
+    /// 使用一个道具:扣减背包(debug 模式不消耗)并执行对应效果。
+    /// 数量不足(非 debug 模式)时设置警告消息并返回 false。
+    pub fn use_tool(&mut self, item: shop::ItemType) -> bool {
+        let lang = i18n::Lang::from_code(&self.settings.language);
+        let count = self.inventory.get(&item).copied().unwrap_or(0);
+        if count == 0 && self.settings.debug_mode != "on" {
+            self.set_message(
+                i18n::t("tool.no_count", lang).to_string(),
+                std::time::Duration::from_secs(2),
+            );
+            return false;
+        }
+        // 扣减
+        let _ = self.consume_item(item);
+        // 实际效果
+        let msg = shop::apply_tool(self, item);
+        if let Some(m) = msg {
+            self.set_message(m, std::time::Duration::from_secs(2));
+        }
+        true
     }
 
     pub fn set_message(&mut self, text: impl Into<String>, duration: Duration) {
@@ -465,6 +550,19 @@ impl App {
             started: Instant::now(),
         });
         self.screen = AppScreen::Generating;
+    }
+
+    /// 触发胜利结算: 计算金币奖励,加入 gold 并持久化,跳转到 Victory 画面
+    pub fn trigger_victory(&mut self) {
+        let elapsed = total_elapsed(self);
+        let reward = shop::calculate_gold_reward(self.game.difficulty, elapsed);
+        self.last_reward = reward;
+        self.gold += reward;
+        let _ = save::save_setting("player_gold", &self.gold.to_string());
+        self.game.completed = true;
+        self.screen = AppScreen::Victory;
+        self.victory_countdown = Some(Instant::now() + Duration::from_secs(3));
+        let _ = save::save_game(&self.game);
     }
 
     pub fn check_generating(&mut self) -> Option<GameState> {
@@ -654,6 +752,18 @@ fn run_app(
                 app = App::start_game(game);
             } else if let Some(ref mut gen_state) = app.generating {
                 gen_state.spinner = (gen_state.spinner + 1) % 4;
+            }
+        }
+
+        // 贪吃蛇: 每帧推进 + 胜负结算时退出
+        if app.snake.is_some() {
+            shop::snake_step(&mut app);
+            if let Some(snake) = app.snake.as_ref() {
+                if snake.outcome != shop::SnakeOutcome::Running {
+                    if let Some(msg) = shop::end_snake_game(&mut app) {
+                        app.set_message(msg, Duration::from_secs(2));
+                    }
+                }
             }
         }
 
