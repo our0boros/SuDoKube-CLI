@@ -183,7 +183,10 @@ impl Widget for Button<'_> {
         // 装饰图标（左右边缘）—— 单独占用一格
         if let Some(decor) = self.left_edge {
             let fg = if decor.faded { background } else { highlight };
-            let style = Style::new().fg(fg).bg(background).add_modifier(Modifier::BOLD);
+            let style = Style::new()
+                .fg(fg)
+                .bg(background)
+                .add_modifier(Modifier::BOLD);
             let mut tmp = [0u8; 4];
             let sym = decor.ch.encode_utf8(&mut tmp);
             buf[(area.left(), area.y + (area.height.saturating_sub(1)) / 2)]
@@ -192,10 +195,16 @@ impl Widget for Button<'_> {
         }
         if let Some(decor) = self.right_edge {
             let fg = if decor.faded { background } else { highlight };
-            let style = Style::new().fg(fg).bg(background).add_modifier(Modifier::BOLD);
+            let style = Style::new()
+                .fg(fg)
+                .bg(background)
+                .add_modifier(Modifier::BOLD);
             let mut tmp = [0u8; 4];
             let sym = decor.ch.encode_utf8(&mut tmp);
-            buf[(area.right().saturating_sub(1), area.y + (area.height.saturating_sub(1)) / 2)]
+            buf[(
+                area.right().saturating_sub(1),
+                area.y + (area.height.saturating_sub(1)) / 2,
+            )]
                 .set_symbol(sym)
                 .set_style(style);
         }
@@ -203,7 +212,10 @@ impl Widget for Button<'_> {
         // 标签居中（避开左右装饰）
         let label_x = area.x
             + self.left_edge.is_some() as u16
-            + (self.width(area.width).saturating_sub(self.label.width() as u16)) / 2;
+            + (self
+                .width(area.width)
+                .saturating_sub(self.label.width() as u16))
+                / 2;
         let label_y = area.y + (area.height.saturating_sub(1)) / 2;
 
         let max_label_w = self

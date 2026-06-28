@@ -1,11 +1,9 @@
-
 use sudokube_core::cube::Face;
 
-use crate::i18n::{self, Lang};
 use crate::App;
+use crate::i18n::{self, Lang};
 
 use std::time::Duration;
-
 
 pub(super) fn face_label(face: Face, _lang: Lang) -> &'static str {
     match face {
@@ -220,39 +218,38 @@ pub fn convert_face_dir(old_face: Face, dx: i8, dy: i8, _new_face: Face) -> (i8,
     // 确保蛇在新面上不会立即越界或回头撞到自己
     match (old_face, dx, dy) {
         // Front 面
-        (Face::Front,  1,  0) => ( 0, -1),
-        (Face::Front, -1,  0) => (-1,  0),
-        (Face::Front,  0,  1) => ( 0, -1),
-        (Face::Front,  0, -1) => (-1,  0),
+        (Face::Front, 1, 0) => (0, -1),
+        (Face::Front, -1, 0) => (-1, 0),
+        (Face::Front, 0, 1) => (0, -1),
+        (Face::Front, 0, -1) => (-1, 0),
         // Back 面
-        (Face::Back,   1,  0) => ( 0,  1),
-        (Face::Back,  -1,  0) => ( 0,  1),
-        (Face::Back,   0,  1) => ( 0,  1),
-        (Face::Back,   0, -1) => ( 1,  0),
+        (Face::Back, 1, 0) => (0, 1),
+        (Face::Back, -1, 0) => (0, 1),
+        (Face::Back, 0, 1) => (0, 1),
+        (Face::Back, 0, -1) => (1, 0),
         // Right 面
-        (Face::Right,  1,  0) => (-1,  0),
-        (Face::Right, -1,  0) => ( 0, -1),
-        (Face::Right,  0,  1) => (-1,  0),
-        (Face::Right,  0, -1) => (-1,  0),
+        (Face::Right, 1, 0) => (-1, 0),
+        (Face::Right, -1, 0) => (0, -1),
+        (Face::Right, 0, 1) => (-1, 0),
+        (Face::Right, 0, -1) => (-1, 0),
         // Left 面
-        (Face::Left,   1,  0) => ( 1,  0),
-        (Face::Left,  -1,  0) => ( 1,  0),
-        (Face::Left,   0,  1) => ( 1,  0),
-        (Face::Left,   0, -1) => ( 0,  1),
+        (Face::Left, 1, 0) => (1, 0),
+        (Face::Left, -1, 0) => (1, 0),
+        (Face::Left, 0, 1) => (1, 0),
+        (Face::Left, 0, -1) => (0, 1),
         // Top 面
-        (Face::Top,    1,  0) => (-1,  0),
-        (Face::Top,   -1,  0) => ( 0, -1),
-        (Face::Top,    0,  1) => ( 0, -1),
-        (Face::Top,    0, -1) => ( 0, -1),
+        (Face::Top, 1, 0) => (-1, 0),
+        (Face::Top, -1, 0) => (0, -1),
+        (Face::Top, 0, 1) => (0, -1),
+        (Face::Top, 0, -1) => (0, -1),
         // Bottom 面
-        (Face::Bottom, 1,  0) => ( 1,  0),
-        (Face::Bottom,-1,  0) => ( 1,  0),
-        (Face::Bottom, 0,  1) => ( 1,  0),
-        (Face::Bottom, 0, -1) => ( 0,  1),
+        (Face::Bottom, 1, 0) => (1, 0),
+        (Face::Bottom, -1, 0) => (1, 0),
+        (Face::Bottom, 0, 1) => (1, 0),
+        (Face::Bottom, 0, -1) => (0, 1),
         // 兜底：保持原方向
         _ => (dx, dy),
     }
 }
 
 // ── 键位映射编辑事件处理 ──
-

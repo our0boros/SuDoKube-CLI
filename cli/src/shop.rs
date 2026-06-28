@@ -133,14 +133,21 @@ pub fn shop_catalog() -> Vec<ShopItem> {
 /// 慢于目标时间时按比例降低,但不低于 1 金币。
 ///
 /// 最高收益 = 3 × 10 = 30 金币(可购买 3 次立方体提示)
-pub fn calculate_gold_reward(difficulty: Difficulty, elapsed_seconds: u64, config: &crate::config::GameConfig) -> i32 {
+pub fn calculate_gold_reward(
+    difficulty: Difficulty,
+    elapsed_seconds: u64,
+    config: &crate::config::GameConfig,
+) -> i32 {
     let target_time = config.gold_target_secs(difficulty);
     // 最高收益: 3 次提示 (以立方体提示为基准)
     let max_reward = 3 * ItemType::Cube.price();
 
     let elapsed = elapsed_seconds.max(1) as f64;
     let ratio = target_time as f64 / elapsed;
-    let bonus = ratio.clamp(config.gold_reward_min_multiplier, config.gold_reward_max_multiplier);
+    let bonus = ratio.clamp(
+        config.gold_reward_min_multiplier,
+        config.gold_reward_max_multiplier,
+    );
     (max_reward as f64 * bonus).round().max(1.0) as i32
 }
 
@@ -248,7 +255,10 @@ pub fn start_snake_game(app: &mut crate::App, fruit_count: u8) {
     };
     // 移除蛇身位置
     let body_set: HashSet<_> = body.iter().copied().collect();
-    let pool: Vec<_> = empties.into_iter().filter(|c| !body_set.contains(c)).collect();
+    let pool: Vec<_> = empties
+        .into_iter()
+        .filter(|c| !body_set.contains(c))
+        .collect();
     // 果实
     let fruit_count_usize = fruit_count as usize;
     let mut fruits = HashSet::new();
@@ -261,7 +271,11 @@ pub fn start_snake_game(app: &mut crate::App, fruit_count: u8) {
     }
     // 墙: 少量随机
     let mut walls = HashSet::new();
-    let pool2: Vec<_> = pool.iter().copied().filter(|c| !fruits.contains(c)).collect();
+    let pool2: Vec<_> = pool
+        .iter()
+        .copied()
+        .filter(|c| !fruits.contains(c))
+        .collect();
     for _ in 0..fruit_count_usize.min(pool2.len()) {
         let idx = (next_rand() as usize) % pool2.len();
         walls.insert(pool2[idx]);
@@ -299,16 +313,13 @@ pub fn snake_step(app: &mut crate::App) {
 
         // 计算新头: 使用 move_on_surface 实现跨面
         let (head_face, head_u, head_v) = snake.body[0];
-        let (new_face, (new_u, new_v)) = crate::input::move_on_surface(
-            head_face,
-            (head_u, head_v),
-            snake.dir.0,
-            snake.dir.1,
-        );
+        let (new_face, (new_u, new_v)) =
+            crate::input::move_on_surface(head_face, (head_u, head_v), snake.dir.0, snake.dir.1);
 
         // 跨面时转换蛇方向，保持3D空间方向不变
         if new_face != head_face {
-            snake.dir = crate::input::convert_face_dir(head_face, snake.dir.0, snake.dir.1, new_face);
+            snake.dir =
+                crate::input::convert_face_dir(head_face, snake.dir.0, snake.dir.1, new_face);
         }
 
         let new_pos = (new_face, new_u, new_v);
@@ -425,10 +436,7 @@ fn apply_face_hint(app: &mut crate::App, lang: crate::i18n::Lang) -> String {
         .keys()
         .copied()
         .filter(|coord| {
-            let on_face = coord
-                .to_face_coords()
-                .iter()
-                .any(|fc| fc.face == face);
+            let on_face = coord.to_face_coords().iter().any(|fc| fc.face == face);
             if !on_face {
                 return false;
             }

@@ -33,14 +33,14 @@ pub struct App {
     pub settings: AppSettings,
     pub settings_ui: SettingsState,
     pub generating: Option<GeneratingState>,
-    pub cube_angle_y: f64,                  // 3D cube Y-axis rotation angle
-    pub cube_angle_x: f64,                  // 3D cube X-axis rotation angle
-    pub victory_countdown: Option<Instant>, // Victory screen countdown
-    pub import_buffer: String,              // Import input buffer
+    pub cube_angle_y: f64,                     // 3D cube Y-axis rotation angle
+    pub cube_angle_x: f64,                     // 3D cube X-axis rotation angle
+    pub victory_countdown: Option<Instant>,    // Victory screen countdown
+    pub import_buffer: String,                 // Import input buffer
     pub import_paste_started: Option<Instant>, // 一键粘贴开始时间
     pub import_last_input: Option<Instant>,    // 上次输入时间(用于检测连续粘贴)
-    pub export_select: usize,               // 0=encrypted, 1=plaintext
-    pub action_log: VecDeque<String>,       // Recent action messages (newest at back)
+    pub export_select: usize,                  // 0=encrypted, 1=plaintext
+    pub action_log: VecDeque<String>,          // Recent action messages (newest at back)
     pub overflow_notice_elapsed: Option<Instant>, // Until when to suppress overflow mode-switch notice
     /// 待删除的存档 ID(确认弹窗打开时设置)
     pub confirm_delete_id: Option<i64>,

@@ -6,10 +6,10 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::i18n::{self, Lang};
-use crate::App;
 use super::types::*;
 use super::util::*;
+use crate::App;
+use crate::i18n::{self, Lang};
 
 pub fn compute_settings_popup_layout(area: Rect, app: &mut App) -> SettingsPopupLayout {
     let total_fields = app.settings_ui.fields.len();
@@ -129,7 +129,9 @@ pub(super) fn draw_settings_overlay(f: &mut Frame, app: &App) {
         .border_style(Style::default().fg(Color::Cyan))
         .title(Span::styled(
             format!(" {} ", i18n::t("settings.title", lang)),
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ));
     f.render_widget(block.clone(), popup_area);
     let inner = block.inner(popup_area);
@@ -186,10 +188,26 @@ pub(super) fn draw_settings_overlay(f: &mut Frame, app: &App) {
         // 计算 ◁ / ▷ 边缘淡化
         let at_min = field.option_index == 0;
         let at_max = field.option_index + 1 >= field.options.len();
-        let hl_fg = if is_selected { Color::Black } else { Color::White };
-        let hl_bg = if is_selected { Color::White } else { Color::Black };
-        let decor_fg_normal = if is_selected || is_hover { Color::Black } else { Color::Cyan };
-        let decor_bg = if is_selected || is_hover { Color::Yellow } else { Color::Black };
+        let hl_fg = if is_selected {
+            Color::Black
+        } else {
+            Color::White
+        };
+        let hl_bg = if is_selected {
+            Color::White
+        } else {
+            Color::Black
+        };
+        let decor_fg_normal = if is_selected || is_hover {
+            Color::Black
+        } else {
+            Color::Cyan
+        };
+        let decor_bg = if is_selected || is_hover {
+            Color::Yellow
+        } else {
+            Color::Black
+        };
 
         // 标签部分
         let label_text = format!(" {} ", field.label);
@@ -215,19 +233,42 @@ pub(super) fn draw_settings_overlay(f: &mut Frame, app: &App) {
 
         let mut spans: Vec<Span> = Vec::new();
         spans.push(Span::styled(label_text, label_style));
-        let left_pad = (inner_w - label_w as i32 - 1 - 1 - display_width(&display_value) as i32 - 1 - 1).max(0) as usize;
+        let left_pad = (inner_w
+            - label_w as i32
+            - 1
+            - 1
+            - display_width(&display_value) as i32
+            - 1
+            - 1)
+        .max(0) as usize;
         if left_pad > 0 {
             spans.push(Span::styled(" ".repeat(left_pad), label_style));
         }
-        let left_hover = is_hover && app.settings_ui.hover_arrow == Some(crate::SettingsArrow::Left);
-        let right_hover = is_hover && app.settings_ui.hover_arrow == Some(crate::SettingsArrow::Right);
+        let left_hover =
+            is_hover && app.settings_ui.hover_arrow == Some(crate::SettingsArrow::Left);
+        let right_hover =
+            is_hover && app.settings_ui.hover_arrow == Some(crate::SettingsArrow::Right);
         let left_sym = if left_hover { "◁" } else { "‹" };
         let right_sym = if right_hover { "▷" } else { "›" };
         // 仍然使用 ◁/▷ 但 hover 时加粗
         let left_symbol = if left_hover { "◁" } else { "‹" };
         let right_symbol = if right_hover { "▷" } else { "›" };
-        let la = if left_hover { Style::default().fg(Color::Red).bg(Color::Yellow).add_modifier(Modifier::BOLD) } else { left_arrow_style };
-        let ra = if right_hover { Style::default().fg(Color::Red).bg(Color::Yellow).add_modifier(Modifier::BOLD) } else { right_arrow_style };
+        let la = if left_hover {
+            Style::default()
+                .fg(Color::Red)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            left_arrow_style
+        };
+        let ra = if right_hover {
+            Style::default()
+                .fg(Color::Red)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            right_arrow_style
+        };
         let _ = (left_sym, right_sym); // suppress unused
         spans.push(Span::styled(left_symbol, la));
         spans.push(Span::styled(" ", label_style));
@@ -235,13 +276,7 @@ pub(super) fn draw_settings_overlay(f: &mut Frame, app: &App) {
         spans.push(Span::styled(" ", label_style));
         spans.push(Span::styled(right_symbol, ra));
         // 填充剩余
-        let used = label_w
-            + left_pad
-            + 1
-            + 1
-            + display_width(&display_value)
-            + 1
-            + 1;
+        let used = label_w + left_pad + 1 + 1 + display_width(&display_value) + 1 + 1;
         if used < inner_w as usize {
             spans.push(Span::styled(
                 " ".repeat(inner_w as usize - used),
@@ -257,8 +292,7 @@ pub(super) fn draw_settings_overlay(f: &mut Frame, app: &App) {
 
     // 提示
     f.render_widget(
-        Paragraph::new(i18n::t("settings.hint", lang))
-            .style(Style::default().fg(Color::DarkGray)),
+        Paragraph::new(i18n::t("settings.hint", lang)).style(Style::default().fg(Color::DarkGray)),
         hint_area,
     );
 
@@ -271,11 +305,15 @@ pub(super) fn draw_settings_overlay(f: &mut Frame, app: &App) {
         let mut state = ScrollbarState::new(total_fields).position(scroll as usize);
         f.render_stateful_widget(
             scrollbar,
-            Rect::new(content_area.x + content_area.width.saturating_sub(1), content_area.y, 1, content_area.height),
+            Rect::new(
+                content_area.x + content_area.width.saturating_sub(1),
+                content_area.y,
+                1,
+                content_area.height,
+            ),
             &mut state,
         );
     }
 }
 
 // ── 胜利画面 ──
-

@@ -9,8 +9,8 @@ use ratatui::{
 
 use sudokube_core::cube::Face;
 
-use crate::i18n::Lang;
 use crate::App;
+use crate::i18n::Lang;
 
 use super::types::GameLayout;
 use super::util::{arrow_neighbor_faces, face_name, face_to_color, parse_color};
@@ -92,8 +92,14 @@ pub fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
     let sin_x = app.cube_angle_x.sin();
 
     let verts: [(f64, f64, f64); 8] = [
-        (-1.0, -1.0, -1.0), (1.0, -1.0, -1.0), (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0),
-        (-1.0, -1.0, 1.0),  (1.0, -1.0, 1.0),  (1.0, 1.0, 1.0),  (-1.0, 1.0, 1.0),
+        (-1.0, -1.0, -1.0),
+        (1.0, -1.0, -1.0),
+        (1.0, 1.0, -1.0),
+        (-1.0, 1.0, -1.0),
+        (-1.0, -1.0, 1.0),
+        (1.0, -1.0, 1.0),
+        (1.0, 1.0, 1.0),
+        (-1.0, 1.0, 1.0),
     ];
 
     let project = |x: f64, y: f64, z: f64| {
@@ -107,9 +113,12 @@ pub fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
     let proj: Vec<(f64, f64, f64)> = verts.iter().map(|&(x, y, z)| project(x, y, z)).collect();
 
     let faces: [([usize; 4], Face); 6] = [
-        ([4, 5, 6, 7], Face::Front),  ([0, 3, 2, 1], Face::Back),
-        ([0, 4, 7, 3], Face::Left),   ([1, 2, 6, 5], Face::Right),
-        ([3, 7, 6, 2], Face::Top),    ([0, 1, 5, 4], Face::Bottom),
+        ([4, 5, 6, 7], Face::Front),
+        ([0, 3, 2, 1], Face::Back),
+        ([0, 4, 7, 3], Face::Left),
+        ([1, 2, 6, 5], Face::Right),
+        ([3, 7, 6, 2], Face::Top),
+        ([0, 1, 5, 4], Face::Bottom),
     ];
 
     let mut sorted_faces: Vec<([usize; 4], Face)> = faces.to_vec();
@@ -130,16 +139,27 @@ pub fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
 
         for py in (min_y as u16)..=(max_y as u16) {
             for px in (min_x as u16)..=(max_x as u16) {
-                if px < content_area.x || px >= content_area.x + content_area.width { continue; }
-                if py < content_area.y || py >= content_area.y + content_area.height { continue; }
+                if px < content_area.x || px >= content_area.x + content_area.width {
+                    continue;
+                }
+                if py < content_area.y || py >= content_area.y + content_area.height {
+                    continue;
+                }
                 if point_in_quad(px as f64, py as f64, &pts) {
                     let style = if *face == app.current_face {
                         Style::default().fg(color).add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(color)
                     };
-                    let ch = if *face == app.current_face { '●' } else { '░' };
-                    f.render_widget(Paragraph::new(ch.to_string()).style(style), Rect::new(px, py, 1, 1));
+                    let ch = if *face == app.current_face {
+                        '●'
+                    } else {
+                        '░'
+                    };
+                    f.render_widget(
+                        Paragraph::new(ch.to_string()).style(style),
+                        Rect::new(px, py, 1, 1),
+                    );
                 }
             }
         }
@@ -153,19 +173,28 @@ pub fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
 
     // Orbiting sphere
     let face_center_3d = match app.current_face {
-        Face::Front => (0.0, 0.0, 1.8),   Face::Back => (0.0, 0.0, -1.8),
-        Face::Left => (-1.8, 0.0, 0.0),    Face::Right => (1.8, 0.0, 0.0),
-        Face::Top => (0.0, 1.8, 0.0),      Face::Bottom => (0.0, -1.8, 0.0),
+        Face::Front => (0.0, 0.0, 1.8),
+        Face::Back => (0.0, 0.0, -1.8),
+        Face::Left => (-1.8, 0.0, 0.0),
+        Face::Right => (1.8, 0.0, 0.0),
+        Face::Top => (0.0, 1.8, 0.0),
+        Face::Bottom => (0.0, -1.8, 0.0),
     };
     let (sx, sy, _) = project(face_center_3d.0, face_center_3d.1, face_center_3d.2);
     let sphere_color = face_to_color(app.current_face);
     let sx_u = sx as u16;
     let sy_u = sy as u16;
-    if sx_u >= content_area.x && sx_u < content_area.x + content_area.width
-        && sy_u >= content_area.y && sy_u < content_area.y + content_area.height
+    if sx_u >= content_area.x
+        && sx_u < content_area.x + content_area.width
+        && sy_u >= content_area.y
+        && sy_u < content_area.y + content_area.height
     {
         f.render_widget(
-            Paragraph::new("◉").style(Style::default().fg(sphere_color).add_modifier(Modifier::BOLD)),
+            Paragraph::new("◉").style(
+                Style::default()
+                    .fg(sphere_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Rect::new(sx_u, sy_u, 1, 1),
         );
     }
@@ -174,7 +203,8 @@ pub fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
     let lang = Lang::from_code(&app.settings.language);
     let label = face_name(app.current_face, lang);
     let label_w = label.chars().count() as u16;
-    let label_x = layout.cube_outer_frame.x + layout.cube_outer_frame.width.saturating_sub(label_w) / 2;
+    let label_x =
+        layout.cube_outer_frame.x + layout.cube_outer_frame.width.saturating_sub(label_w) / 2;
     let label_y = layout.cube_outer_frame.y + layout.cube_outer_frame.height.saturating_sub(1);
     if label_y > layout.cube_outer_frame.y {
         let max_x = layout.cube_outer_frame.x + layout.cube_outer_frame.width;
@@ -183,7 +213,8 @@ pub fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
         let clipped: String = label.chars().skip(start_offset).take(w as usize).collect();
         if w > 0 && !clipped.is_empty() {
             f.render_widget(
-                Paragraph::new(clipped).style(Style::default().fg(face_to_color(app.current_face)).bg(bg)),
+                Paragraph::new(clipped)
+                    .style(Style::default().fg(face_to_color(app.current_face)).bg(bg)),
                 Rect::new(label_x.max(layout.cube_outer_frame.x), label_y, w, 1),
             );
         }
@@ -191,21 +222,31 @@ pub fn draw_3d_cube(f: &mut Frame, layout: &GameLayout, app: &App) {
 }
 
 fn point_in_quad(px: f64, py: f64, pts: &[(f64, f64)]) -> bool {
-    if pts.len() != 4 { return false; }
+    if pts.len() != 4 {
+        return false;
+    }
     let mut inside = true;
     for i in 0..4 {
         let (x1, y1) = pts[i];
         let (x2, y2) = pts[(i + 1) % 4];
         let cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
-        if cross > 0.0 { inside = false; break; }
+        if cross > 0.0 {
+            inside = false;
+            break;
+        }
     }
-    if inside { return true; }
+    if inside {
+        return true;
+    }
     inside = true;
     for i in 0..4 {
         let (x1, y1) = pts[i];
         let (x2, y2) = pts[(i + 1) % 4];
         let cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
-        if cross < 0.0 { inside = false; break; }
+        if cross < 0.0 {
+            inside = false;
+            break;
+        }
     }
     inside
 }
@@ -214,13 +255,22 @@ fn draw_line(f: &mut Frame, x1: f64, y1: f64, x2: f64, y2: f64, color: Color, bo
     let dx = (x2 - x1).abs();
     let dy = (y2 - y1).abs();
     let steps = dx.max(dy).ceil() as u16;
-    if steps == 0 { return; }
+    if steps == 0 {
+        return;
+    }
     for i in 0..=steps {
         let t = i as f64 / steps as f64;
         let x = (x1 + (x2 - x1) * t) as u16;
         let y = (y1 + (y2 - y1) * t) as u16;
-        if x >= bounds.x && x < bounds.x + bounds.width && y >= bounds.y && y < bounds.y + bounds.height {
-            f.render_widget(Paragraph::new("·").style(Style::default().fg(color)), Rect::new(x, y, 1, 1));
+        if x >= bounds.x
+            && x < bounds.x + bounds.width
+            && y >= bounds.y
+            && y < bounds.y + bounds.height
+        {
+            f.render_widget(
+                Paragraph::new("·").style(Style::default().fg(color)),
+                Rect::new(x, y, 1, 1),
+            );
         }
     }
 }

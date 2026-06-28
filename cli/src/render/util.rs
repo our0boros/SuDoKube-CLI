@@ -1,14 +1,11 @@
 //! 渲染公共工具函数
 
-use ratatui::{
-    layout::Rect,
-    style::Color,
-};
+use ratatui::{layout::Rect, style::Color};
 
 use sudokube_core::cube::Face;
 
 use crate::i18n::{self, Lang};
-use crate::{total_elapsed, App};
+use crate::{App, total_elapsed};
 
 use super::types::{ButtonId, GameLayout, PagerAction, RenderMode};
 
@@ -16,8 +13,10 @@ use super::types::{ButtonId, GameLayout, PagerAction, RenderMode};
 
 pub fn find_button_at(layout: &GameLayout, col: u16, row: u16) -> Option<ButtonId> {
     for btn in &layout.buttons {
-        if row >= btn.row && row < btn.row + btn.height.max(1)
-            && col >= btn.col && col < btn.col + btn.width
+        if row >= btn.row
+            && row < btn.row + btn.height.max(1)
+            && col >= btn.col
+            && col < btn.col + btn.width
         {
             return Some(btn.id);
         }
@@ -27,13 +26,21 @@ pub fn find_button_at(layout: &GameLayout, col: u16, row: u16) -> Option<ButtonI
 
 pub fn shop_item_at(layout: &GameLayout, col: u16, row: u16) -> Option<usize> {
     let panel = layout.shop_area;
-    if col < panel.x || col >= panel.x + panel.width { return None; }
-    if row < panel.y || row >= panel.y + panel.height { return None; }
+    if col < panel.x || col >= panel.x + panel.width {
+        return None;
+    }
+    if row < panel.y || row >= panel.y + panel.height {
+        return None;
+    }
     let inner_y = row.saturating_sub(panel.y + 1);
     let item_top = 2;
-    if inner_y < item_top { return None; }
+    if inner_y < item_top {
+        return None;
+    }
     let item_row = (inner_y - item_top) / 3;
-    if item_row >= 4 { return None; }
+    if item_row >= 4 {
+        return None;
+    }
     Some(item_row as usize)
 }
 
@@ -52,12 +59,20 @@ pub fn pager_action_at(layout: &GameLayout, col: u16, row: u16) -> Option<PagerA
 pub fn cell_at(layout: &GameLayout, cw: usize, ch: usize, col: u16, row: u16) -> Option<(u8, u8)> {
     let gx = col.saturating_sub(layout.grid_area.x);
     let gy = row.saturating_sub(layout.grid_area.y);
-    if gy % (ch as u16 + 1) == 0 { return None; }
+    if gy % (ch as u16 + 1) == 0 {
+        return None;
+    }
     let v = (gy / (ch as u16 + 1)) as u8;
-    if v >= 9 { return None; }
-    if gx % (cw as u16 + 1) == 0 { return None; }
+    if v >= 9 {
+        return None;
+    }
+    if gx % (cw as u16 + 1) == 0 {
+        return None;
+    }
     let u = (gx / (cw as u16 + 1)) as u8;
-    if u >= 9 { return None; }
+    if u >= 9 {
+        return None;
+    }
     Some((u, v))
 }
 
@@ -69,12 +84,18 @@ pub fn display_width(s: &str) -> usize {
 
 pub fn pad_right(s: &str, width: usize) -> String {
     let dw = display_width(s);
-    if dw >= width { s.to_string() } else { format!("{}{}", s, " ".repeat(width - dw)) }
+    if dw >= width {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(width - dw))
+    }
 }
 
 pub fn pad_center(s: &str, width: usize) -> String {
     let dw = display_width(s);
-    if dw >= width { return s.to_string(); }
+    if dw >= width {
+        return s.to_string();
+    }
     let total = width - dw;
     let left = total / 2;
     let right = total - left;
@@ -82,7 +103,11 @@ pub fn pad_center(s: &str, width: usize) -> String {
 }
 
 pub fn bordered_line(content: &str, inner_w: usize, center: bool) -> String {
-    let padded = if center { pad_center(content, inner_w) } else { pad_right(content, inner_w) };
+    let padded = if center {
+        pad_center(content, inner_w)
+    } else {
+        pad_right(content, inner_w)
+    };
     format!("│{}│", padded)
 }
 
@@ -94,7 +119,10 @@ pub fn format_timer(app: &App) -> String {
 }
 
 pub fn is_wrong(app: &App, coord: sudokube_core::cube::CubeCoord, value: u8) -> bool {
-    app.game.solution.get(&coord).map_or(true, |&sol| sol != value)
+    app.game
+        .solution
+        .get(&coord)
+        .map_or(true, |&sol| sol != value)
 }
 
 // ── 面相关工具 ──
@@ -124,10 +152,28 @@ pub fn face_to_color(face: Face) -> Color {
 pub fn wasd_neighbor_faces(face: Face) -> (Face, Face, Face, Face, Face) {
     match face {
         Face::Front => (Face::Bottom, Face::Top, Face::Left, Face::Right, Face::Back),
-        Face::Back => (Face::Left, Face::Right, Face::Bottom, Face::Top, Face::Front),
-        Face::Top => (Face::Back, Face::Front, Face::Left, Face::Right, Face::Bottom),
+        Face::Back => (
+            Face::Left,
+            Face::Right,
+            Face::Bottom,
+            Face::Top,
+            Face::Front,
+        ),
+        Face::Top => (
+            Face::Back,
+            Face::Front,
+            Face::Left,
+            Face::Right,
+            Face::Bottom,
+        ),
         Face::Bottom => (Face::Left, Face::Right, Face::Back, Face::Front, Face::Top),
-        Face::Left => (Face::Bottom, Face::Top, Face::Back, Face::Front, Face::Right),
+        Face::Left => (
+            Face::Bottom,
+            Face::Top,
+            Face::Back,
+            Face::Front,
+            Face::Right,
+        ),
         Face::Right => (Face::Back, Face::Front, Face::Bottom, Face::Top, Face::Left),
     }
 }
@@ -135,10 +181,28 @@ pub fn wasd_neighbor_faces(face: Face) -> (Face, Face, Face, Face, Face) {
 pub fn arrow_neighbor_faces(face: Face) -> (Face, Face, Face, Face, Face) {
     match face {
         Face::Front => (Face::Top, Face::Bottom, Face::Left, Face::Right, Face::Back),
-        Face::Back => (Face::Top, Face::Bottom, Face::Right, Face::Left, Face::Front),
-        Face::Top => (Face::Back, Face::Front, Face::Left, Face::Right, Face::Bottom),
+        Face::Back => (
+            Face::Top,
+            Face::Bottom,
+            Face::Right,
+            Face::Left,
+            Face::Front,
+        ),
+        Face::Top => (
+            Face::Back,
+            Face::Front,
+            Face::Left,
+            Face::Right,
+            Face::Bottom,
+        ),
         Face::Bottom => (Face::Front, Face::Back, Face::Left, Face::Right, Face::Top),
-        Face::Left => (Face::Top, Face::Bottom, Face::Back, Face::Front, Face::Right),
+        Face::Left => (
+            Face::Top,
+            Face::Bottom,
+            Face::Back,
+            Face::Front,
+            Face::Right,
+        ),
         Face::Right => (Face::Top, Face::Bottom, Face::Front, Face::Back, Face::Left),
     }
 }

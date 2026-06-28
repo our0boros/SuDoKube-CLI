@@ -4,10 +4,10 @@ mod menu;
 mod navigation;
 mod settings;
 
-pub use navigation::move_on_surface;
 pub use navigation::convert_face_dir;
+pub use navigation::move_on_surface;
 
-use crossterm::event::{Event, KeyEventKind, KeyCode};
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::layout::Rect;
 use sudokube_core::cube::Difficulty;
 use sudokube_core::game_state::GameState;
@@ -43,6 +43,7 @@ pub fn handle_event(app: &mut App, event: Event, area: Rect) -> EventResult {
         AppScreen::Victory => handle_victory_event(app, event),
         AppScreen::ExportSelect => handle_export_select_event(app, event),
         AppScreen::ImportInput => handle_import_input_event(app, event),
+        AppScreen::KeymapConfig => keymap::handle_keymap_edit_event(app, event, area),
     }
 }
 
@@ -73,7 +74,9 @@ fn handle_confirm_delete_event(app: &mut App, event: Event) -> EventResult {
 fn handle_victory_event(app: &mut App, event: Event) -> EventResult {
     if let Event::Key(key) = event {
         if key.kind == KeyEventKind::Press {
-            let action = app.keymap.resolve(app.screen, false, key.code, key.modifiers);
+            let action = app
+                .keymap
+                .resolve(app.screen, false, key.code, key.modifiers);
             if matches!(action, Some(Action::Confirm)) {
                 *app = App::new_menu();
                 return EventResult::Continue;
@@ -87,7 +90,9 @@ fn handle_victory_event(app: &mut App, event: Event) -> EventResult {
 fn handle_generating_event(app: &mut App, event: Event) -> EventResult {
     if let Event::Key(key) = event {
         if key.kind == KeyEventKind::Press {
-            let action = app.keymap.resolve(app.screen, false, key.code, key.modifiers);
+            let action = app
+                .keymap
+                .resolve(app.screen, false, key.code, key.modifiers);
             if matches!(action, Some(Action::Cancel)) {
                 app.generating = None;
                 let lang = Lang::from_code(&app.settings.language);
@@ -106,7 +111,9 @@ fn handle_export_select_event(app: &mut App, event: Event) -> EventResult {
         if key.kind != KeyEventKind::Press {
             return EventResult::Continue;
         }
-        let action = app.keymap.resolve(app.screen, false, key.code, key.modifiers);
+        let action = app
+            .keymap
+            .resolve(app.screen, false, key.code, key.modifiers);
         match action {
             Some(Action::ExportUp) => {
                 if app.export_select > 0 {
@@ -178,7 +185,9 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
         if key.kind != KeyEventKind::Press {
             return EventResult::Continue;
         }
-        let action = app.keymap.resolve(app.screen, false, key.code, key.modifiers);
+        let action = app
+            .keymap
+            .resolve(app.screen, false, key.code, key.modifiers);
         match action {
             Some(Action::Confirm) => {
                 let data = app.import_buffer.trim().to_string();
@@ -249,4 +258,3 @@ fn handle_import_input_event(app: &mut App, event: Event) -> EventResult {
     }
     EventResult::Continue
 }
-

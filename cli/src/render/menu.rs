@@ -6,9 +6,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
+use super::util::*;
 use crate::i18n::{self, Lang};
 use crate::{App, MenuItem};
-use super::util::*;
 
 // ── 常量 ──
 
@@ -268,8 +268,11 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
         let gold_w = display_width(&gold_text) as u16;
         if area.width >= gold_w + 4 {
             f.render_widget(
-                Paragraph::new(gold_text.as_str())
-                    .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Paragraph::new(gold_text.as_str()).style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Rect::new(area.x + 1, hint_row, gold_w, 1),
             );
         }
@@ -330,4 +333,3 @@ pub(super) fn draw_menu_box(
 }
 
 // ── 游戏画面 ──
-

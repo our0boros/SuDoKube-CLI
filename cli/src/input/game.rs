@@ -1,4 +1,6 @@
-use crossterm::event::{Event, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    Event, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::layout::Rect;
 use sudokube_core::cube::Face;
 
@@ -31,7 +33,9 @@ pub(super) fn handle_game_event(app: &mut App, event: Event, area: Rect) -> Even
 
 fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
     // 通过 keymap 系统解析按键为 Action
-    let action = app.keymap.resolve(app.screen, app.snake.is_some(), key.code, key.modifiers);
+    let action = app
+        .keymap
+        .resolve(app.screen, app.snake.is_some(), key.code, key.modifiers);
 
     // 贪吃蛇小游戏运行中: 方向键控蛇,Esc/Q 退出;禁用其他游戏操作
     if app.snake.is_some() {
@@ -152,7 +156,11 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         Some(Action::ToggleGuidance) => {
             app.guidance = !app.guidance;
             let lang = Lang::from_code(&app.settings.language);
-            let key = if app.guidance { "msg.guide_on" } else { "msg.guide_off" };
+            let key = if app.guidance {
+                "msg.guide_on"
+            } else {
+                "msg.guide_off"
+            };
             app.set_message(i18n::t(key, lang).to_string(), Duration::from_secs(2));
             app.push_log(i18n::t(key, lang), 50);
         }
@@ -178,7 +186,12 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             app.game.set_value(coord, Some(value));
             app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, Some(value));
             app.push_log(
-                format!("Placed {} at R{}C{}", value, app.cursor.1 + 1, app.cursor.0 + 1),
+                format!(
+                    "Placed {} at R{}C{}",
+                    value,
+                    app.cursor.1 + 1,
+                    app.cursor.0 + 1
+                ),
                 50,
             );
             if app.game.check_completion() {
@@ -195,7 +208,13 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             app.current_face = super::navigation::switch_face(app.current_face, 0, -1);
             if app.current_face != prev {
                 let lang = Lang::from_code(&app.settings.language);
-                app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+                app.push_log(
+                    format!(
+                        "→ {}",
+                        super::navigation::face_label(app.current_face, lang)
+                    ),
+                    50,
+                );
             }
         }
         Some(Action::FaceDown) => {
@@ -203,7 +222,13 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             app.current_face = super::navigation::switch_face(app.current_face, 0, 1);
             if app.current_face != prev {
                 let lang = Lang::from_code(&app.settings.language);
-                app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+                app.push_log(
+                    format!(
+                        "→ {}",
+                        super::navigation::face_label(app.current_face, lang)
+                    ),
+                    50,
+                );
             }
         }
         Some(Action::FaceLeft) => {
@@ -211,7 +236,13 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             app.current_face = super::navigation::switch_face(app.current_face, -1, 0);
             if app.current_face != prev {
                 let lang = Lang::from_code(&app.settings.language);
-                app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+                app.push_log(
+                    format!(
+                        "→ {}",
+                        super::navigation::face_label(app.current_face, lang)
+                    ),
+                    50,
+                );
             }
         }
         Some(Action::FaceRight) => {
@@ -219,38 +250,80 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             app.current_face = super::navigation::switch_face(app.current_face, 1, 0);
             if app.current_face != prev {
                 let lang = Lang::from_code(&app.settings.language);
-                app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+                app.push_log(
+                    format!(
+                        "→ {}",
+                        super::navigation::face_label(app.current_face, lang)
+                    ),
+                    50,
+                );
             }
         }
         Some(Action::FaceFront) => {
             app.current_face = Face::Front;
             let lang = Lang::from_code(&app.settings.language);
-            app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+            app.push_log(
+                format!(
+                    "→ {}",
+                    super::navigation::face_label(app.current_face, lang)
+                ),
+                50,
+            );
         }
         Some(Action::FaceBack) => {
             app.current_face = Face::Back;
             let lang = Lang::from_code(&app.settings.language);
-            app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+            app.push_log(
+                format!(
+                    "→ {}",
+                    super::navigation::face_label(app.current_face, lang)
+                ),
+                50,
+            );
         }
         Some(Action::FaceLeftJump) => {
             app.current_face = Face::Left;
             let lang = Lang::from_code(&app.settings.language);
-            app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+            app.push_log(
+                format!(
+                    "→ {}",
+                    super::navigation::face_label(app.current_face, lang)
+                ),
+                50,
+            );
         }
         Some(Action::FaceRightJump) => {
             app.current_face = Face::Right;
             let lang = Lang::from_code(&app.settings.language);
-            app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+            app.push_log(
+                format!(
+                    "→ {}",
+                    super::navigation::face_label(app.current_face, lang)
+                ),
+                50,
+            );
         }
         Some(Action::FaceTop) => {
             app.current_face = Face::Top;
             let lang = Lang::from_code(&app.settings.language);
-            app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+            app.push_log(
+                format!(
+                    "→ {}",
+                    super::navigation::face_label(app.current_face, lang)
+                ),
+                50,
+            );
         }
         Some(Action::FaceBottom) => {
             app.current_face = Face::Bottom;
             let lang = Lang::from_code(&app.settings.language);
-            app.push_log(format!("→ {}", super::navigation::face_label(app.current_face, lang)), 50);
+            app.push_log(
+                format!(
+                    "→ {}",
+                    super::navigation::face_label(app.current_face, lang)
+                ),
+                50,
+            );
         }
         Some(Action::DebugHintFace) => {
             if app.settings.debug_mode == "on" {
@@ -358,7 +431,8 @@ fn handle_mouse(app: &mut App, layout: &GameLayout, mouse: MouseEvent) -> EventR
         }
         MouseEventKind::ScrollDown => {
             if mouse.modifiers.contains(KeyModifiers::ALT) {
-                app.current_face = super::navigation::cycle_face_horizontal(app.current_face, false);
+                app.current_face =
+                    super::navigation::cycle_face_horizontal(app.current_face, false);
             } else {
                 app.current_face = super::navigation::cycle_face_vertical(app.current_face, false);
             }
@@ -508,4 +582,3 @@ fn debug_win(app: &mut App) {
         app.trigger_victory();
     }
 }
-

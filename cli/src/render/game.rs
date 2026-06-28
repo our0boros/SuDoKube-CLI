@@ -6,11 +6,11 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
+use super::types::*;
+use super::util::*;
 use crate::i18n::{self, Lang};
 use crate::shop;
 use crate::{App, AppScreen};
-use super::types::*;
-use super::util::*;
 
 pub(super) fn draw_game(f: &mut Frame, app: &mut App) {
     let area = f.area();
@@ -267,8 +267,12 @@ fn build_layout(
     let cube_inner_frame = Rect::new(
         cube_outer_frame.x + 1 + inner_left_offset,
         cube_outer_frame.y + 1 + inner_top_offset,
-        cube_outer_frame.width.saturating_sub(2 + inner_left_offset * 2),
-        cube_outer_frame.height.saturating_sub(2 + inner_top_offset * 2),
+        cube_outer_frame
+            .width
+            .saturating_sub(2 + inner_left_offset * 2),
+        cube_outer_frame
+            .height
+            .saturating_sub(2 + inner_top_offset * 2),
     );
 
     // cube_inner1 垂直布局
@@ -313,10 +317,26 @@ fn build_layout(
     // ── 按钮定义（使用自定义 Button Widget）──
     // 道具按钮 label 包含持有数量,例如 "🎲×2"
     let tool_defs: Vec<(String, ButtonId, crate::ButtonTheme)> = [
-        (shop::ItemType::Cube, ButtonId::ToolCube, crate::THEME_SUCCESS),
-        (shop::ItemType::Snake3, ButtonId::ToolSnake3, crate::THEME_SUCCESS),
-        (shop::ItemType::Face, ButtonId::ToolFace, crate::THEME_SUCCESS),
-        (shop::ItemType::Snake5, ButtonId::ToolSnake5, crate::THEME_SUCCESS),
+        (
+            shop::ItemType::Cube,
+            ButtonId::ToolCube,
+            crate::THEME_SUCCESS,
+        ),
+        (
+            shop::ItemType::Snake3,
+            ButtonId::ToolSnake3,
+            crate::THEME_SUCCESS,
+        ),
+        (
+            shop::ItemType::Face,
+            ButtonId::ToolFace,
+            crate::THEME_SUCCESS,
+        ),
+        (
+            shop::ItemType::Snake5,
+            ButtonId::ToolSnake5,
+            crate::THEME_SUCCESS,
+        ),
         (
             shop::ItemType::Target,
             ButtonId::ToolTarget,
@@ -324,11 +344,13 @@ fn build_layout(
         ),
     ]
     .iter()
-    .map(|(item, id, theme): &(shop::ItemType, ButtonId, crate::ButtonTheme)| {
-        let count = app.inventory.get(item).copied().unwrap_or(0);
-        let label = format!("{}{}", item.icon(), count);
-        (label, *id, *theme)
-    })
+    .map(
+        |(item, id, theme): &(shop::ItemType, ButtonId, crate::ButtonTheme)| {
+            let count = app.inventory.get(item).copied().unwrap_or(0);
+            let label = format!("{}{}", item.icon(), count);
+            (label, *id, *theme)
+        },
+    )
     .collect();
 
     let btn_defs: Vec<(String, ButtonId, u16, crate::ButtonTheme)> = (1..=9u8)
@@ -390,7 +412,11 @@ fn build_layout(
     let mut page_capacity: usize = 0;
     let mut running: usize = 0;
     for (_, _, w, _) in &btn_defs {
-        let add = if page_capacity == 0 { *w as usize } else { 1 + *w as usize };
+        let add = if page_capacity == 0 {
+            *w as usize
+        } else {
+            1 + *w as usize
+        };
         if running + add > available_w as usize {
             break;
         }
@@ -438,7 +464,8 @@ fn build_layout(
         // 按钮居中
         let pager_left = prev_x + 1;
         let pager_right = next_x;
-        let center_start = pager_left + (pager_right.saturating_sub(pager_left + visible_w as u16)) / 2;
+        let center_start =
+            pager_left + (pager_right.saturating_sub(pager_left + visible_w as u16)) / 2;
         bar_x = center_start.max(pager_left);
     }
 
@@ -555,7 +582,9 @@ fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, b
         let lines = vec![
             Line::from(Span::styled(
                 " 🐍 Snake Mode",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(format!(" ⏱  {}s", secs_left)),
             Line::from(format!(" 🍒 {}/{}", snake.score, snake.total_fruits)),
@@ -709,7 +738,9 @@ fn draw_navigator_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color
         let lines = vec![
             Line::from(Span::styled(
                 " 🐍 Snake Controls",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(" ↑↓←→ / WASD"),
             Line::from("   转向"),
@@ -846,12 +877,12 @@ fn draw_shop_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bor
     for (idx, shop_item) in catalog.iter().enumerate().take(end).skip(start) {
         let i = idx; // 全局索引(用于选中态)
         let sel = i == app.shop_selected && app.shop_focused;
-        let count = app.inventory.get(&shop_item.item_type).copied().unwrap_or(0);
-        let _title_color = if sel {
-            Color::White
-        } else {
-            Color::Magenta
-        };
+        let count = app
+            .inventory
+            .get(&shop_item.item_type)
+            .copied()
+            .unwrap_or(0);
+        let _title_color = if sel { Color::White } else { Color::Magenta };
         let bg_style = if sel {
             Style::default().bg(Color::Magenta).fg(Color::White)
         } else {
@@ -859,12 +890,7 @@ fn draw_shop_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bor
         };
         // 第 1 行: 图标 + 名称 + 持有数量
         let name = i18n_item_name(shop_item.item_type, lang);
-        let line1 = format!(
-            "{} {} ×{}",
-            shop_item.item_type.icon(),
-            name,
-            count
-        );
+        let line1 = format!("{} {} ×{}", shop_item.item_type.icon(), name, count);
         lines.push(Line::from(Span::styled(line1, bg_style)));
         // 第 2 行: 描述
         let desc = i18n_item_desc(shop_item.item_type, lang);
@@ -1192,7 +1218,9 @@ fn draw_cell_row(
                     let s = "◉".to_string();
                     let start = (cw - 1) / 2;
                     content.replace_range(start..start + 1, &s);
-                    style = Style::default().fg(Color::Green).add_modifier(Modifier::BOLD);
+                    style = Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD);
                 } else if is_body {
                     if line == mid_line {
                         let s = "●".to_string();
@@ -1365,7 +1393,11 @@ fn draw_button_bar(f: &mut Frame, layout: &GameLayout, app: &App, _bg: Color, bo
         let prev_disabled = cur == 0;
         let prev_text = if prev_disabled { " " } else { "◁" };
         f.render_widget(
-            Paragraph::new(prev_text).style(if prev_disabled { pager_style_disabled } else { pager_style_normal }),
+            Paragraph::new(prev_text).style(if prev_disabled {
+                pager_style_disabled
+            } else {
+                pager_style_normal
+            }),
             pager.prev_rect,
         );
 
@@ -1380,12 +1412,14 @@ fn draw_button_bar(f: &mut Frame, layout: &GameLayout, app: &App, _bg: Color, bo
         let next_disabled = cur + 1 >= total;
         let next_text = if next_disabled { " " } else { "▷" };
         f.render_widget(
-            Paragraph::new(next_text).style(if next_disabled { pager_style_disabled } else { pager_style_normal }),
+            Paragraph::new(next_text).style(if next_disabled {
+                pager_style_disabled
+            } else {
+                pager_style_normal
+            }),
             pager.next_rect,
         );
     }
 }
 
-
 // ── 3D立方体 + 公共工具 + 设置类型 (已迁移至子模块) ──
-

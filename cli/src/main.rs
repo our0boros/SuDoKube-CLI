@@ -18,10 +18,12 @@ pub use app::App;
 pub use game_utils::{continue_game, current_coord, flush_elapsed, now_secs, total_elapsed};
 pub use menu::{MenuItem, MenuState};
 pub use settings::{AppSettings, SettingsField, SettingsState};
-pub use types::{AppScreen, GeneratingState, KeymapEditState, PositionKind, SettingsArrow, position_kind};
+pub use types::{
+    AppScreen, GeneratingState, KeymapEditState, PositionKind, SettingsArrow, position_kind,
+};
 pub use widgets::{
-    Button, ButtonState, ButtonTheme, EdgeDecor, THEME_PRIMARY, THEME_SUCCESS, THEME_DANGER,
-    THEME_NEUTRAL,
+    Button, ButtonState, ButtonTheme, EdgeDecor, THEME_DANGER, THEME_NEUTRAL, THEME_PRIMARY,
+    THEME_SUCCESS,
 };
 
 use std::io;
@@ -98,8 +100,7 @@ fn run_app(
             if needs_overflow_switch && app.render_mode != render::RenderMode::Scrollbar {
                 let prev = app.render_mode;
                 app.render_mode = render::RenderMode::Scrollbar;
-                if prev != render::RenderMode::Scrollbar && app.overflow_notice_elapsed.is_none()
-                {
+                if prev != render::RenderMode::Scrollbar && app.overflow_notice_elapsed.is_none() {
                     let lang = crate::i18n::Lang::from_code(&app.settings.language);
                     let label = render::mode_label(app.render_mode, lang);
                     app.set_message(

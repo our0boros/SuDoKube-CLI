@@ -9,9 +9,9 @@ use crate::settings::AppSettings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderMode {
-    Scrollbar,  // 使用滚动条显示完整数独
-    Compact,    // 精简模式，最小空间占用
-    Standard,   // 标准模式
+    Scrollbar, // 使用滚动条显示完整数独
+    Compact,   // 精简模式，最小空间占用
+    Standard,  // 标准模式
 }
 
 impl RenderMode {

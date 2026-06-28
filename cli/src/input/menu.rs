@@ -1,4 +1,4 @@
-use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::layout::Rect;
 
 use crate::config::Action;
@@ -13,7 +13,9 @@ pub(super) fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> Even
     match event {
         Event::Resize(_, _) => {}
         Event::Key(key) if key.kind == KeyEventKind::Press => {
-            let action = app.keymap.resolve(app.screen, false, key.code, key.modifiers);
+            let action = app
+                .keymap
+                .resolve(app.screen, false, key.code, key.modifiers);
             match action {
                 Some(Action::Quit) => return EventResult::Quit,
                 Some(Action::MenuUp) => {
@@ -49,7 +51,9 @@ pub(super) fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> Even
                     };
                 }
                 Some(Action::MenuDelete) => {
-                    if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned() {
+                    if let Some(MenuItem::Continue(r)) =
+                        app.menu.items.get(app.menu.selected).cloned()
+                    {
                         if key.modifiers.contains(KeyModifiers::ALT) {
                             let _ = delete_game(r.id);
                             app.menu = crate::MenuState::new();
@@ -61,13 +65,18 @@ pub(super) fn handle_menu_event(app: &mut App, event: Event, area: Rect) -> Even
                     }
                 }
                 Some(Action::MenuExport) => {
-                    if let Some(MenuItem::Continue(r)) = app.menu.items.get(app.menu.selected).cloned() {
+                    if let Some(MenuItem::Continue(r)) =
+                        app.menu.items.get(app.menu.selected).cloned()
+                    {
                         let game = crate::continue_game(&r);
                         let encrypted = true;
                         let data = crate::save::export_game(&game, encrypted);
                         if crate::save::copy_to_clipboard(&data) {
                             let lang = Lang::from_code(&app.settings.language);
-                            app.set_message(i18n::t("export.copied", lang), std::time::Duration::from_secs(2));
+                            app.set_message(
+                                i18n::t("export.copied", lang),
+                                std::time::Duration::from_secs(2),
+                            );
                         }
                     }
                 }
@@ -129,4 +138,3 @@ fn menu_item_at(app: &App, _col: u16, row: u16, area: Rect) -> Option<usize> {
         None
     }
 }
-

@@ -2,7 +2,7 @@
 
 use sudokube_core::cube::Difficulty;
 
-use crate::save::{GameRecord, self};
+use crate::save::{self, GameRecord};
 
 /// 启动菜单选项。
 #[derive(Debug, Clone)]
