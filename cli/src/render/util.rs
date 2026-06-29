@@ -114,8 +114,14 @@ pub fn bordered_line(content: &str, inner_w: usize, center: bool) -> String {
 // ── 游戏工具 ──
 
 pub fn format_timer(app: &App) -> String {
-    let elapsed = total_elapsed(app);
-    format!("{:02}:{:02}", elapsed / 60, elapsed % 60)
+    if app.game.frozen {
+        // 冻结状态显示已用时间但不递增
+        let elapsed = app.game.elapsed_seconds;
+        format!("{:02}:{:02}", elapsed / 60, elapsed % 60)
+    } else {
+        let elapsed = total_elapsed(app);
+        format!("{:02}:{:02}", elapsed / 60, elapsed % 60)
+    }
 }
 
 pub fn is_wrong(app: &App, coord: sudokube_core::cube::CubeCoord, value: u8) -> bool {

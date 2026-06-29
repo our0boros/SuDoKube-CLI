@@ -96,8 +96,15 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
                 } else {
                     format!("#{}", r.id)
                 };
+                let status = if r.completed {
+                    i18n::t("menu.victory", lang)
+                } else if r.frozen {
+                    i18n::t("menu.failed", lang)
+                } else {
+                    i18n::t("menu.in_progress", lang)
+                };
                 format!(
-                    "{} {} | {} | {} | {}/{} | {:02}:{:02} | {}",
+                    "{} {} | {} | {} | {}/{} | {:02}:{:02} | ❌{}/{} | {}",
                     i18n::t("menu.continue", lang),
                     name,
                     r.difficulty,
@@ -106,11 +113,9 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
                     total,
                     r.elapsed_seconds / 60,
                     r.elapsed_seconds % 60,
-                    if r.completed {
-                        i18n::t("menu.victory", lang)
-                    } else {
-                        i18n::t("menu.in_progress", lang)
-                    }
+                    r.errors,
+                    r.errors_max,
+                    status,
                 )
             }
         })
@@ -230,11 +235,13 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
                 _ => i18n::t("game.diff_medium", lang),
             };
             let text = format!(
-                " {} {} {:02}:{:02}",
+                " {} {} {:02}:{:02} ❌{}/{}",
                 name,
                 diff_short,
                 r.elapsed_seconds / 60,
-                r.elapsed_seconds % 60
+                r.elapsed_seconds % 60,
+                r.errors,
+                r.errors_max
             );
             lines.push(Line::from(Span::styled(
                 text,

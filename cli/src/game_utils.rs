@@ -47,6 +47,12 @@ pub fn continue_game(record: &GameRecord) -> GameState {
     game.elapsed_seconds = record.elapsed_seconds as u64;
     game.started_at = now_secs();
     game.selected = Some(Face::Front.to_cube(4, 4));
+    game.errors = record.errors;
+    game.errors_max = record.errors_max;
+    game.frozen = record.frozen;
+    if game.frozen {
+        game.started_at = 0.0; // 冻结状态不计时
+    }
     game
 }
 

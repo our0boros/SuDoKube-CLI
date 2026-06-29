@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use super::types::*;
@@ -40,11 +40,153 @@ pub(super) fn draw_game(f: &mut Frame, app: &mut App) {
     draw_shop_panel(f, &layout, app, bg, border);
 
     // Popup 叠加层
-    if app.screen == AppScreen::Settings {
+    if app.game.frozen {
+        draw_frozen_overlay(f, &layout, app);
+    } else if app.screen == AppScreen::Settings {
         super::settings::draw_settings_overlay(f, app);
     } else if app.screen == AppScreen::ImportInput {
         super::overlay::draw_import_overlay(f, app);
     }
+}
+
+/// 冻结状态覆盖层：遮挡数独面板，显示容错耗尽提示和购买选项
+fn draw_frozen_overlay(f: &mut Frame, layout: &GameLayout, app: &App) {
+    let lang = Lang::from_code(&app.settings.language);
+
+    // 遮挡中间数独面板区域（含按钮栏）
+    let cover_area = layout.center_column;
+    f.render_widget(Clear, cover_area);
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        cover_area,
+    );
+    // 同时遮挡左侧和右侧面板
+    f.render_widget(Clear, layout.left_column);
+    f.render_widget(
+        Block::default().style(Style::default().bg(Color::Black)),
+        layout.left_column,
+    );
+    if layout.right_column.width > 0 {
+        f.render_widget(Clear, layout.right_column);
+        f.render_widget(
+            Block::default().style(Style::default().bg(Color::Black)),
+            layout.right_column,
+        );
+    }
+
+    let area = cover_area;
+
+    let box_w = 44u16;
+    let box_h = 9u16;
+    let box_x = area.x + area.width.saturating_sub(box_w) / 2;
+    let box_y = area.y + area.height.saturating_sub(box_h) / 2;
+
+    let inner_w = box_w as usize - 2;
+    let top = format!("╭{}╮", "─".repeat(inner_w));
+    let bot = format!("╰{}╯", "─".repeat(inner_w));
+
+    // 顶部边框
+    f.render_widget(
+        Paragraph::new(top).style(Style::default().fg(Color::Red)),
+        Rect::new(box_x, box_y, box_w, 1),
+    );
+
+    // 标题
+    let title_line = bordered_line(i18n::t("frozen.title", lang), inner_w, true);
+    f.render_widget(
+        Paragraph::new(title_line).style(
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Rect::new(box_x, box_y + 1, box_w, 1),
+    );
+
+    // 分隔线
+    let sep = format!("╟{}╢", "─".repeat(inner_w));
+    f.render_widget(
+        Paragraph::new(sep).style(Style::default().fg(Color::Red)),
+        Rect::new(box_x, box_y + 2, box_w, 1),
+    );
+
+    // 错误信息
+    let info = format!(
+        "│ {:^width$} │",
+        format!(
+            "{} {}/{}(+{})",
+            i18n::t("frozen.errors_info", lang),
+            app.game.errors,
+            app.game.errors_max,
+            app.global_errors_max
+        ),
+        width = inner_w - 2
+    );
+    f.render_widget(
+        Paragraph::new(info).style(Style::default().fg(Color::Yellow)),
+        Rect::new(box_x, box_y + 3, box_w, 1),
+    );
+
+    // 购买提示
+    let buy_line = format!(
+        "│ {:^width$} │",
+        i18n::t("frozen.buy_hint", lang),
+        width = inner_w - 2
+    );
+    f.render_widget(
+        Paragraph::new(buy_line).style(Style::default().fg(Color::White)),
+        Rect::new(box_x, box_y + 4, box_w, 1),
+    );
+
+    // 购买选项1: 当局容错
+    let local_selected = app.frozen_select == 0;
+    let local_prefix = if local_selected { "▸" } else { " " };
+    let local_style = if local_selected {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Cyan)
+    };
+    let buy_local = format!(
+        "│ {}{:width$}│",
+        local_prefix,
+        format!("🩶 {} (10{})", i18n::t("shop.local_revive", lang), i18n::t("shop.gold_unit", lang)),
+        width = inner_w - 1
+    );
+    f.render_widget(
+        Paragraph::new(buy_local).style(local_style),
+        Rect::new(box_x, box_y + 5, box_w, 1),
+    );
+
+    // 购买选项2: 全局容错
+    let global_selected = app.frozen_select == 1;
+    let global_prefix = if global_selected { "▸" } else { " " };
+    let global_style = if global_selected {
+        Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Magenta)
+    };
+    let buy_global = format!(
+        "│ {}{:width$}│",
+        global_prefix,
+        format!("🖤 {} (20{})", i18n::t("shop.global_revive", lang), i18n::t("shop.gold_unit", lang)),
+        width = inner_w - 1
+    );
+    f.render_widget(
+        Paragraph::new(buy_global).style(global_style),
+        Rect::new(box_x, box_y + 6, box_w, 1),
+    );
+
+    // 提示
+    let hint_line = bordered_line(i18n::t("frozen.hint", lang), inner_w, true);
+    f.render_widget(
+        Paragraph::new(hint_line).style(Style::default().fg(Color::DarkGray)),
+        Rect::new(box_x, box_y + 7, box_w, 1),
+    );
+
+    // 底部边框
+    f.render_widget(
+        Paragraph::new(bot).style(Style::default().fg(Color::Red)),
+        Rect::new(box_x, box_y + 8, box_w, 1),
+    );
 }
 
 pub fn compute_game_layout_from_rect(area: Rect, app: &mut App) -> GameLayout {
@@ -685,6 +827,22 @@ fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, b
             i18n::t("info.time", lang),
             format_timer(app),
         )),
+        Line::from({
+            let err_color = if app.game.frozen {
+                Color::Red
+            } else if app.game.errors > 0 {
+                Color::Yellow
+            } else {
+                Color::White
+            };
+            Span::styled(
+                format!(
+                    " ❌ {}/{}(+{})",
+                    app.game.errors, app.game.errors_max, app.global_errors_max
+                ),
+                Style::default().fg(err_color),
+            )
+        }),
         Line::from(format!(" {}/{} ({}%)", remaining, total, progress_pct)),
     ];
     lines.extend(digit_lines);

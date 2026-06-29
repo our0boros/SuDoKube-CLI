@@ -20,6 +20,9 @@ pub struct GameRecord {
     pub answer: HashMap<CubeCoord, u8>,
     pub puzzle: HashMap<CubeCoord, u8>,
     pub given: HashMap<CubeCoord, u8>,
+    pub errors: u32,
+    pub errors_max: u32,
+    pub frozen: bool,
 }
 
 pub fn init_db() -> Result<Connection> {
@@ -42,6 +45,19 @@ pub fn init_db() -> Result<Connection> {
     // 兼容旧表：添加 given 列。
     let _ = conn.execute(
         "ALTER TABLE games ADD COLUMN given TEXT NOT NULL DEFAULT ''",
+        [],
+    );
+    // 兼容旧表：添加容错列。
+    let _ = conn.execute(
+        "ALTER TABLE games ADD COLUMN errors INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE games ADD COLUMN errors_max INTEGER NOT NULL DEFAULT 3",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE games ADD COLUMN frozen BOOLEAN NOT NULL DEFAULT 0",
         [],
     );
     // 设置表
@@ -91,8 +107,11 @@ pub fn save_game(state: &GameState) -> Result<i64> {
                 answer = ?6,
                 puzzle = ?7,
                 given = ?8,
-                moves = ?9
-             WHERE id = ?10",
+                moves = ?9,
+                errors = ?10,
+                errors_max = ?11,
+                frozen = ?12
+             WHERE id = ?13",
             params![
                 started.format("%Y-%m-%d %H:%M:%S").to_string(),
                 finished.map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string()),
@@ -103,14 +122,17 @@ pub fn save_game(state: &GameState) -> Result<i64> {
                 puzzle_str,
                 given_str,
                 "",
+                state.errors,
+                state.errors_max,
+                state.frozen,
                 id
             ],
         )?;
         Ok(id)
     } else {
         conn.execute(
-            "INSERT INTO games (started_at, finished_at, elapsed_seconds, difficulty, completed, answer, puzzle, given, moves)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO games (started_at, finished_at, elapsed_seconds, difficulty, completed, answer, puzzle, given, moves, errors, errors_max, frozen)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 started.format("%Y-%m-%d %H:%M:%S").to_string(),
                 finished.map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string()),
@@ -120,7 +142,10 @@ pub fn save_game(state: &GameState) -> Result<i64> {
                 answer_str,
                 puzzle_str,
                 given_str,
-                ""
+                "",
+                state.errors,
+                state.errors_max,
+                state.frozen
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -148,7 +173,7 @@ pub fn load_completed(limit: usize) -> Result<Vec<GameRecord>> {
 fn load_records(where_clause: &str, limit: usize) -> Result<Vec<GameRecord>> {
     let conn = init_db()?;
     let sql = format!(
-        "SELECT id, started_at, finished_at, elapsed_seconds, difficulty, completed, answer, puzzle, given
+        "SELECT id, started_at, finished_at, elapsed_seconds, difficulty, completed, answer, puzzle, given, errors, errors_max, frozen
          FROM games {}",
         where_clause
     );
@@ -172,6 +197,9 @@ fn load_records(where_clause: &str, limit: usize) -> Result<Vec<GameRecord>> {
             answer: deserialize_solution(&answer),
             puzzle: deserialize_solution(&puzzle),
             given: deserialize_solution(&given),
+            errors: row.get(9)?,
+            errors_max: row.get(10)?,
+            frozen: row.get(11)?,
         })
     })?;
 

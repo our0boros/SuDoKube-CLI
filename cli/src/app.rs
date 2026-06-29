@@ -3,11 +3,11 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use sudokube_core::cube::Face;
+use sudokube_core::cube::{CubeCoord, Face};
 use sudokube_core::game_state::GameState;
 
 use crate::config;
-use crate::game_utils::{new_game, total_elapsed};
+use crate::game_utils::{flush_elapsed, new_game, now_secs, total_elapsed};
 use crate::i18n;
 use crate::menu::MenuState;
 use crate::render::{ButtonId, RenderMode};
@@ -60,6 +60,10 @@ pub struct App {
     pub last_reward: i32,
     /// 贪吃蛇小游戏状态(运行中时为 Some)
     pub snake: Option<shop::SnakeState>,
+    /// 全局容错上限(开局默认 3，购买后增加)
+    pub global_errors_max: u32,
+    /// 冻结状态下购买选项光标: 0=当局容错, 1=全局容错
+    pub frozen_select: u8,
     /// 游戏数值配置(集中化 magic number)
     pub config: config::GameConfig,
     /// 键位映射(可自定义)
@@ -112,6 +116,12 @@ impl App {
             shop_focused: false,
             last_reward: 0,
             snake: None,
+            global_errors_max: save::load_setting("global_errors_max")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3),
+            frozen_select: 0,
             config: config::GameConfig::default(),
             keymap: config::Keymap::load_from_db(),
         }
@@ -130,7 +140,64 @@ impl App {
         app
     }
 
-    /// 购买一个商店商品,扣减金币并加到背包。
+    /// 检查指定坐标放置的值是否为错误答案。
+    /// 如果错误，消耗容错次数(优先当局，再全局)；
+    /// 若容错耗尽则冻结对局。返回 true 表示输入错误。
+    pub fn check_and_consume_error(&mut self, coord: CubeCoord, value: u8) -> bool {
+        let is_wrong = self
+            .game
+            .solution
+            .get(&coord)
+            .map_or(true, |&sol| sol != value);
+        if !is_wrong {
+            return false;
+        }
+        // 计算总可用容错 = 当局剩余 + 全局剩余
+        let local_remaining = self.game.errors_max.saturating_sub(self.game.errors);
+        let global_remaining = self.global_errors_max;
+        if local_remaining > 0 {
+            // 优先消耗当局容错
+            self.game.errors += 1;
+        } else if global_remaining > 0 {
+            // 消耗全局容错: global_errors_max 代表全局剩余量，消耗后减1
+            self.global_errors_max = self.global_errors_max.saturating_sub(1);
+            let _ = save::save_setting(
+                "global_errors_max",
+                &self.global_errors_max.to_string(),
+            );
+        }
+        // 检查是否耗尽
+        let local_rem = self.game.errors_max.saturating_sub(self.game.errors);
+        let global_rem = self.global_errors_max;
+        if local_rem == 0 && global_rem == 0 {
+            self.freeze_game();
+        }
+        true
+    }
+
+    /// 冻结当前对局：暂停计时，标记 frozen，存档状态改为"失败"
+    pub fn freeze_game(&mut self) {
+        flush_elapsed(self);
+        self.game.frozen = true;
+        self.game.started_at = 0.0; // 停止计时
+        let _ = save::save_game(&self.game);
+    }
+
+    /// 解冻对局：购买容错后恢复（刷新 errors_max 并解冻）
+    pub fn unfreeze_game(&mut self, extra_local: u32, extra_global: u32) {
+        self.game.errors_max += extra_local;
+        self.global_errors_max += extra_global;
+        let _ = save::save_setting(
+            "global_errors_max",
+            &self.global_errors_max.to_string(),
+        );
+        self.game.frozen = false;
+        self.game.started_at = now_secs();
+        let _ = save::save_game(&self.game);
+    }
+
+    /// 购买一个商店商品,扣减金币。
+    /// 容错道具直接生效(不入背包)，其余道具加到背包。
     /// 成功返回 true;金币不足返回 false。
     pub fn buy_item(&mut self, item: shop::ItemType) -> bool {
         let price = item.price();
@@ -139,7 +206,12 @@ impl App {
         }
         self.gold -= price;
         let _ = save::save_setting("player_gold", &self.gold.to_string());
-        *self.inventory.entry(item).or_insert(0) += 1;
+        if item.is_revive() {
+            // 容错道具购买后直接生效
+            shop::apply_tool(self, item);
+        } else {
+            *self.inventory.entry(item).or_insert(0) += 1;
+        }
         true
     }
 

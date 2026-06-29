@@ -42,6 +42,7 @@ tr_map! {
     "menu.completed" => { zh: "已完成", en: "Done", ja: "完了" },
     "menu.victory" => { zh: "已胜利", en: "Victory", ja: "勝利" },
     "menu.in_progress" => { zh: "进行中", en: "Playing", ja: "プレイ中" },
+    "menu.failed" => { zh: "失败", en: "Failed", ja: "失敗" },
     "menu.hint_nav" => { zh: "↑↓选择 Enter确认 D删除 E导出 I导入 Q退出", en: "↑↓ Select Enter OK D Del E Exp I Imp Q Quit", ja: "↑↓ 選択 Enter決定 D削除 E出力 I入力 Q終了" },
     "menu.delete_confirm" => { zh: "确定要删除此对局？", en: "Delete this game?", ja: "この対局を削除?" },
     "menu.delete_hint" => { zh: "[Y]确认  [N]取消", en: "[Y]Yes  [N]No", ja: "[Y]はい  [N]いいえ" },
@@ -162,6 +163,11 @@ tr_map! {
     "shop.face_desc" => { zh: "当前面随机填一格", en: "Fill a random cell on face", ja: "現在の面の任意1個" },
     "shop.target" => { zh: "当前选择提示", en: "Target Hint", ja: "選択ﾋﾝﾄ" },
     "shop.target_desc" => { zh: "光标所在格答案", en: "Hint at cursor", ja: "ｶｰｿﾙ位置の答え" },
+    "shop.local_revive" => { zh: "当局容错+1", en: "Local Error+1", ja: "局内ｴﾗｰ+1" },
+    "shop.local_revive_desc" => { zh: "当局容错上限+1(直接生效)", en: "Local error limit+1 (instant)", ja: "局内ｴﾗｰ上限+1(即時)" },
+    "shop.global_revive" => { zh: "全局容错+1", en: "Global Error+1", ja: "全体ｴﾗｰ+1" },
+    "shop.global_revive_desc" => { zh: "全局容错上限+1(直接生效)", en: "Global error limit+1 (instant)", ja: "全体ｴﾗｰ上限+1(即時)" },
+    "shop.gold_unit" => { zh: "币", en: "g", ja: "G" },
     "shop.hint_focused" => { zh: "PgUp/Dn 切换 Enter 购买 Tab 退出", en: "PgUp/Dn switch Enter buy Tab exit", ja: "PgUp/Dn 選択 Enter 購入 Tab 終了" },
     "shop.hint_unfocused" => { zh: "Tab 进入商店", en: "Tab to focus shop", ja: "Tab でｼｮｯﾌﾟ選択" },
     "shop.bought" => { zh: "已购入", en: "Bought", ja: "購入済" },
@@ -176,9 +182,18 @@ tr_map! {
     "tool.no_empty" => { zh: "无空格可填", en: "No empty cell", ja: "空きなし" },
     "tool.no_empty_face" => { zh: "当前面无空格", en: "No empty cell on face", ja: "面に空きなし" },
     "tool.snake_todo" => { zh: "贪吃蛇功能开发中", en: "Snake game coming soon", ja: "ｽﾈｰｸ準備中" },
+    "tool.local_revive_done" => { zh: "🩶 当局容错+1", en: "🩶 Local error+1", ja: "🩶 局内ｴﾗｰ+1" },
+    "tool.global_revive_done" => { zh: "🖤 全局容错+1", en: "🖤 Global error+1", ja: "🖤 全体ｴﾗｰ+1" },
 
     // Status panel
     "status.inventory" => { zh: "道具", en: "Items", ja: "道具" },
+    "status.wrong" => { zh: "❌ 输入错误", en: "❌ Wrong", ja: "❌ 間違い" },
+
+    // Frozen state
+    "frozen.title" => { zh: "容错次数耗尽", en: "Errors Exhausted", ja: "エラー回数切れ" },
+    "frozen.errors_info" => { zh: "错误次数", en: "Errors", ja: "エラー" },
+    "frozen.buy_hint" => { zh: "是否购买容错次数?", en: "Buy error tolerance?", ja: "エラー回数を購入?" },
+    "frozen.hint" => { zh: "↑↓ 选择  Enter 购买  Q 退出", en: "↑↓ Select  Enter Buy  Q Quit", ja: "↑↓ 選択  Enter 購入  Q 終了" },
 
     // Victory extra
     "victory.reward" => { zh: "金币 +{}", en: "Gold +{}", ja: "ｺﾞｰﾙﾄﾞ +{}" },

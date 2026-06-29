@@ -16,6 +16,12 @@ pub struct GameState {
     pub history_index: usize,
     pub auto_next: bool,
     pub id: Option<i64>,
+    /// 当局已使用错误次数
+    pub errors: u32,
+    /// 当局容错上限(默认 3)
+    pub errors_max: u32,
+    /// 对局是否因容错耗尽而冻结
+    pub frozen: bool,
 }
 
 impl GameState {
@@ -33,6 +39,9 @@ impl GameState {
             history_index: 0,
             auto_next: false,
             id: None,
+            errors: 0,
+            errors_max: 3,
+            frozen: false,
         }
     }
 

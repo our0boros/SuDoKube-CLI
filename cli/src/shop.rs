@@ -22,16 +22,22 @@ pub enum ItemType {
     Snake5,
     /// ❗ 当前选择目标提示 — 提示当前光标所在格的答案
     Target,
+    /// 🩶 当局复活次数 — 增加当局容错上限(购买后立即生效)
+    LocalRevive,
+    /// 🖤 全局复活次数 — 增加全局容错上限(购买后立即生效)
+    GlobalRevive,
 }
 
 impl ItemType {
-    pub fn all() -> [ItemType; 5] {
+    pub fn all() -> [ItemType; 7] {
         [
             ItemType::Cube,
             ItemType::Snake3,
             ItemType::Face,
             ItemType::Snake5,
             ItemType::Target,
+            ItemType::LocalRevive,
+            ItemType::GlobalRevive,
         ]
     }
 
@@ -43,6 +49,8 @@ impl ItemType {
             ItemType::Face => 20,
             ItemType::Snake5 => 30,
             ItemType::Target => 40,
+            ItemType::LocalRevive => 10,
+            ItemType::GlobalRevive => 20,
         }
     }
 
@@ -54,6 +62,8 @@ impl ItemType {
             ItemType::Face => "🔀",
             ItemType::Snake5 => "🐍5",
             ItemType::Target => "❗",
+            ItemType::LocalRevive => "🩶",
+            ItemType::GlobalRevive => "🖤",
         }
     }
 
@@ -65,6 +75,8 @@ impl ItemType {
             ItemType::Face => "Fc",
             ItemType::Snake5 => "S5",
             ItemType::Target => "Tg",
+            ItemType::LocalRevive => "LR",
+            ItemType::GlobalRevive => "GR",
         }
     }
 
@@ -75,6 +87,11 @@ impl ItemType {
             ItemType::Snake5 => 5,
             _ => 0,
         }
+    }
+
+    /// 是否为容错道具(购买后直接生效,不入背包)
+    pub fn is_revive(&self) -> bool {
+        matches!(self, ItemType::LocalRevive | ItemType::GlobalRevive)
     }
 
     /// 是否为贪吃蛇类型
@@ -90,6 +107,8 @@ impl ItemType {
             ItemType::Face => "shop.face",
             ItemType::Snake5 => "shop.snake5",
             ItemType::Target => "shop.target",
+            ItemType::LocalRevive => "shop.local_revive",
+            ItemType::GlobalRevive => "shop.global_revive",
         }
     }
 
@@ -101,6 +120,8 @@ impl ItemType {
             ItemType::Face => "shop.face_desc",
             ItemType::Snake5 => "shop.snake5_desc",
             ItemType::Target => "shop.target_desc",
+            ItemType::LocalRevive => "shop.local_revive_desc",
+            ItemType::GlobalRevive => "shop.global_revive_desc",
         }
     }
 }
@@ -153,7 +174,7 @@ pub fn calculate_gold_reward(
 
 /// 应用道具效果。返回 Some(消息) 显示在状态栏。
 ///
-/// 在 App 上执行实际的提示/小游戏效果。
+/// 在 App 上执行实际的提示/小游戏/复活效果。
 pub fn apply_tool(app: &mut crate::App, item: ItemType) -> Option<String> {
     let lang = crate::i18n::Lang::from_code(&app.settings.language);
     match item {
@@ -164,6 +185,8 @@ pub fn apply_tool(app: &mut crate::App, item: ItemType) -> Option<String> {
             start_snake_game(app, item.fruit_count());
             None
         }
+        ItemType::LocalRevive => Some(apply_local_revive(app, lang)),
+        ItemType::GlobalRevive => Some(apply_global_revive(app, lang)),
     }
 }
 
@@ -206,7 +229,11 @@ pub enum SnakeOutcome {
 
 /// 在 App 上启动贪吃蛇小游戏。设置 `app.snake = Some(...)`。
 /// `fruit_count`: 果实数量(由道具类型决定)
+///
+/// 启动时会 flush 数独计时器(暂停计时),退出时重置计时起点。
 pub fn start_snake_game(app: &mut crate::App, fruit_count: u8) {
+    // 暂停数独计时器
+    crate::flush_elapsed(app);
     // 收集未填的空格(可生成果实/墙),转为 (Face, u, v) 形式
     let empties: Vec<(Face, u8, u8)> = app
         .game
@@ -385,6 +412,8 @@ pub fn end_snake_game(app: &mut crate::App) -> Option<String> {
         None
     };
     app.snake = None;
+    // 恢复数独计时器(重新开始计秒)
+    app.game.started_at = crate::now_secs();
     msg
 }
 
@@ -504,4 +533,28 @@ fn jump_cursor_to(app: &mut crate::App, coord: sudokube_core::cube::CubeCoord) {
         app.current_face = fc.face;
         app.cursor = (fc.u, fc.v);
     }
+}
+
+/// 🩶 当局复活: 增加当局容错上限并解冻
+fn apply_local_revive(app: &mut crate::App, lang: crate::i18n::Lang) -> String {
+    if app.game.frozen {
+        app.unfreeze_game(1, 0);
+    } else {
+        app.game.errors_max += 1;
+    }
+    crate::i18n::t("tool.local_revive_done", lang).to_string()
+}
+
+/// 🖤 全局复活: 增加全局容错上限并解冻
+fn apply_global_revive(app: &mut crate::App, lang: crate::i18n::Lang) -> String {
+    if app.game.frozen {
+        app.unfreeze_game(0, 1);
+    } else {
+        app.global_errors_max += 1;
+        let _ = crate::save::save_setting(
+            "global_errors_max",
+            &app.global_errors_max.to_string(),
+        );
+    }
+    crate::i18n::t("tool.global_revive_done", lang).to_string()
 }

@@ -60,6 +60,41 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         return EventResult::Continue;
     }
 
+    // 冻结状态(容错耗尽): 上下选择购买项, Enter购买, Q退出
+    if app.game.frozen {
+        match action {
+            Some(Action::Quit) => return EventResult::BackToMenu,
+            Some(Action::CursorUp) => {
+                app.frozen_select = if app.frozen_select == 0 { 1 } else { 0 };
+            }
+            Some(Action::CursorDown) => {
+                app.frozen_select = if app.frozen_select == 0 { 1 } else { 0 };
+            }
+            Some(Action::Confirm) => {
+                let item = if app.frozen_select == 0 {
+                    crate::shop::ItemType::LocalRevive
+                } else {
+                    crate::shop::ItemType::GlobalRevive
+                };
+                let lang = Lang::from_code(&app.settings.language);
+                if app.buy_item(item) {
+                    let name = i18n::t(item.name_key(), lang);
+                    app.set_message(
+                        format!("{} {}", i18n::t("shop.bought", lang), name),
+                        Duration::from_secs(2),
+                    );
+                } else {
+                    app.set_message(
+                        i18n::t("shop.no_gold", lang).to_string(),
+                        Duration::from_secs(2),
+                    );
+                }
+            }
+            _ => {}
+        }
+        return EventResult::Continue;
+    }
+
     // Tab: 切换商店焦点
     if matches!(action, Some(Action::ShopFocus)) {
         app.toggle_shop_focus();
@@ -183,17 +218,43 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             let value = n;
             let coord = current_coord(app);
             let old = app.game.grid.get(&coord).and_then(|c| c.user_value);
+            // 跳过已给定/已有相同值的格子
+            if let Some(cell) = app.game.grid.get(&coord) {
+                if cell.given || cell.user_value == Some(value) {
+                    return EventResult::Continue;
+                }
+            }
             app.game.set_value(coord, Some(value));
             app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, Some(value));
+            // 容错检测
+            let is_wrong = app.check_and_consume_error(coord, value);
+            if is_wrong {
+                let lang = Lang::from_code(&app.settings.language);
+                let global_rem = app.global_errors_max;
+                app.set_message(
+                    format!(
+                        "{} {}/{}(+{})",
+                        crate::i18n::t("status.wrong", lang),
+                        app.game.errors,
+                        app.game.errors_max,
+                        global_rem
+                    ),
+                    Duration::from_secs(2),
+                );
+            }
             app.push_log(
                 format!(
-                    "Placed {} at R{}C{}",
+                    "Placed {} at R{}C{}{}",
                     value,
                     app.cursor.1 + 1,
-                    app.cursor.0 + 1
+                    app.cursor.0 + 1,
+                    if is_wrong { " ❌" } else { "" }
                 ),
                 50,
             );
+            if app.game.frozen {
+                return EventResult::Continue;
+            }
             if app.game.check_completion() {
                 app.trigger_victory();
                 return EventResult::Continue;
@@ -374,6 +435,11 @@ fn apply_pager_action(app: &mut App, layout: &GameLayout, action: PagerAction) {
 }
 
 fn handle_mouse(app: &mut App, layout: &GameLayout, mouse: MouseEvent) -> EventResult {
+    // 冻结状态下禁止鼠标交互
+    if app.game.frozen {
+        return EventResult::Continue;
+    }
+
     let cw = app.render_mode.cell_width(&app.settings);
     let ch = app.render_mode.cell_height();
 
@@ -448,8 +514,32 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
         ButtonId::Number(n) => {
             let coord = current_coord(app);
             let old = app.game.grid.get(&coord).and_then(|c| c.user_value);
+            // 跳过已给定/已有相同值的格子
+            if let Some(cell) = app.game.grid.get(&coord) {
+                if cell.given || cell.user_value == Some(n) {
+                    return EventResult::Continue;
+                }
+            }
             app.game.set_value(coord, Some(n));
             app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, Some(n));
+            // 容错检测
+            let is_wrong = app.check_and_consume_error(coord, n);
+            if is_wrong {
+                let lang = Lang::from_code(&app.settings.language);
+                app.set_message(
+                    format!(
+                        "{} {}/{}(+{})",
+                        crate::i18n::t("status.wrong", lang),
+                        app.game.errors,
+                        app.game.errors_max,
+                        app.global_errors_max
+                    ),
+                    Duration::from_secs(2),
+                );
+            }
+            if app.game.frozen {
+                return EventResult::Continue;
+            }
             if app.game.check_completion() {
                 app.trigger_victory();
                 return EventResult::Continue;
