@@ -1433,11 +1433,19 @@ fn draw_cell_row(
 
             let guide_group = parse_color(&app.settings.guide_group_color);
             let guide_same = parse_color(&app.settings.guide_same_color);
+            let user_fg = parse_color(&app.settings.user_value_color);
+            let error_fg = parse_color(&app.settings.error_value_color);
+            let error_bold = app.settings.error_bold == "on";
             // 闪烁逻辑:开启时 blink_on 在两态间切换;关闭时使用反色(白底黑字)保持高亮
             let blink_setting_on = app.settings.blink_highlight == "on";
             let blink_on = blink_setting_on && app.blink_on;
+            let error_style_base = if error_bold {
+                Style::default().fg(error_fg).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(error_fg)
+            };
             let style = if selected && is_error {
-                Style::default().bg(Color::White).fg(Color::Red)
+                Style::default().bg(Color::White).fg(error_fg)
             } else if selected && blink_on {
                 Style::default().bg(Color::White).fg(Color::Black)
             } else if selected && blink_setting_on {
@@ -1452,13 +1460,13 @@ fn draw_cell_row(
             } else if has_same_number {
                 Style::default().bg(guide_same).fg(Color::White)
             } else if is_error {
-                Style::default().fg(Color::Red)
+                error_style_base
             } else if is_given {
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD)
             } else if value.is_some() {
-                Style::default().fg(border)
+                Style::default().fg(user_fg)
             } else {
                 Style::default().fg(Color::White)
             };

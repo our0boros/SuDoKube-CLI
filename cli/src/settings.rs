@@ -22,6 +22,9 @@ pub struct AppSettings {
     pub language: String,           // "zh", "en", "ja"
     pub naming_mode: String,        // "vivid", "numeric"
     pub blink_highlight: String,    // "off", "on"
+    pub user_value_color: String,   // "white", "cyan", "magenta", "blue", "green", "gray"
+    pub error_value_color: String,  // "red", "yellow", "magenta"
+    pub error_bold: String,         // "off", "on"
 }
 
 impl Default for AppSettings {
@@ -42,6 +45,9 @@ impl Default for AppSettings {
             language: lang,
             naming_mode: "vivid".into(),
             blink_highlight: "off".into(),
+            user_value_color: "white".into(),
+            error_value_color: "red".into(),
+            error_bold: "on".into(),
         }
     }
 }
@@ -107,6 +113,18 @@ impl AppSettings {
                 .ok()
                 .flatten()
                 .unwrap_or(def.blink_highlight),
+            user_value_color: save::load_setting("user_value_color")
+                .ok()
+                .flatten()
+                .unwrap_or(def.user_value_color),
+            error_value_color: save::load_setting("error_value_color")
+                .ok()
+                .flatten()
+                .unwrap_or(def.error_value_color),
+            error_bold: save::load_setting("error_bold")
+                .ok()
+                .flatten()
+                .unwrap_or(def.error_bold),
         }
     }
 
@@ -125,6 +143,9 @@ impl AppSettings {
         let _ = save::save_setting("language", &self.language);
         let _ = save::save_setting("naming_mode", &self.naming_mode);
         let _ = save::save_setting("blink_highlight", &self.blink_highlight);
+        let _ = save::save_setting("user_value_color", &self.user_value_color);
+        let _ = save::save_setting("error_value_color", &self.error_value_color);
+        let _ = save::save_setting("error_bold", &self.error_bold);
     }
 }
 
@@ -223,6 +244,21 @@ impl SettingsState {
         let languages = vec!["zh".into(), "en".into(), "ja".into()];
         let naming_modes = vec!["vivid".into(), "numeric".into()];
         let blink_modes = vec!["off".into(), "on".into()];
+        let user_value_colors = vec![
+            "white".into(),
+            "cyan".into(),
+            "magenta".into(),
+            "blue".into(),
+            "green".into(),
+            "yellow".into(),
+            "gray".into(),
+        ];
+        let error_value_colors = vec![
+            "red".into(),
+            "yellow".into(),
+            "magenta".into(),
+        ];
+        let bold_modes = vec!["off".into(), "on".into()];
 
         let fields = vec![
             SettingsField::new("Cell Width", &s.standard_cell_width.to_string(), widths),
@@ -230,6 +266,9 @@ impl SettingsState {
             SettingsField::new("Border Color", &s.border_color, border_colors.clone()),
             SettingsField::new("Guide-Group", &s.guide_group_color, guide_colors.clone()),
             SettingsField::new("Guide-Same", &s.guide_same_color, guide_colors),
+            SettingsField::new("Input Color", &s.user_value_color, user_value_colors),
+            SettingsField::new("Error Color", &s.error_value_color, error_value_colors),
+            SettingsField::new("Error Bold", &s.error_bold, bold_modes),
             SettingsField::new("Cube Scale", &s.cube_scale, cube_scales),
             SettingsField::new("Show Cube", &s.show_cube, yes_no),
             SettingsField::new("Cube Width", &s.cube_width, cube_widths),
@@ -260,16 +299,19 @@ impl SettingsState {
         s.border_color = self.fields[2].value.clone();
         s.guide_group_color = self.fields[3].value.clone();
         s.guide_same_color = self.fields[4].value.clone();
-        s.cube_scale = self.fields[5].value.clone();
-        s.show_cube = self.fields[6].value.clone();
-        s.cube_width = self.fields[7].value.clone();
-        s.cube_height = self.fields[8].value.clone();
-        s.cube_aspect = self.fields[9].value.clone();
-        s.debug_mode = self.fields[10].value.clone();
-        s.language = self.fields[11].value.clone();
-        s.naming_mode = self.fields[12].value.clone();
-        s.blink_highlight = self.fields[13].value.clone();
-        // fields[14] = "Keymap" — 不写入 AppSettings
+        s.user_value_color = self.fields[5].value.clone();
+        s.error_value_color = self.fields[6].value.clone();
+        s.error_bold = self.fields[7].value.clone();
+        s.cube_scale = self.fields[8].value.clone();
+        s.show_cube = self.fields[9].value.clone();
+        s.cube_width = self.fields[10].value.clone();
+        s.cube_height = self.fields[11].value.clone();
+        s.cube_aspect = self.fields[12].value.clone();
+        s.debug_mode = self.fields[13].value.clone();
+        s.language = self.fields[14].value.clone();
+        s.naming_mode = self.fields[15].value.clone();
+        s.blink_highlight = self.fields[16].value.clone();
+        // fields[17] = "Keymap" — 不写入 AppSettings
     }
 }
 

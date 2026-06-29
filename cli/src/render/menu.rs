@@ -128,8 +128,73 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
         .unwrap_or(20);
     let box_w = (max_text_w + 4).min(area.width as usize); // ╭ + " " + text + " " + ╮; 裁剪到屏幕宽度
 
-    // 侧边栏宽度
-    let sidebar_w: u16 = 28;
+    // ── 侧边栏宽度：先按实际内容（统计行 + 胜利记录）计算所需最大宽度，再加框内边距 ──
+    let victories = &app.menu.victories;
+    let total_v = victories.len();
+    let easy_count = victories
+        .iter()
+        .filter(|r| r.difficulty == "简单" || r.difficulty == "easy")
+        .count();
+    let med_count = victories
+        .iter()
+        .filter(|r| r.difficulty == "中等" || r.difficulty == "medium")
+        .count();
+    let hard_count = victories
+        .iter()
+        .filter(|r| r.difficulty == "困难" || r.difficulty == "hard")
+        .count();
+
+    // 统计行(只用于计算宽度,与最终渲染保持一致)
+    let stats_w = display_width(&format!(
+        " {}:{} {} {}:{} {} {}:{}",
+        i18n::t("menu.sidebar_total", lang),
+        total_v,
+        i18n::t("game.diff_easy", lang)
+            .chars()
+            .next()
+            .unwrap_or('E'),
+        easy_count,
+        i18n::t("game.diff_medium", lang)
+            .chars()
+            .next()
+            .unwrap_or('M'),
+        med_count,
+        i18n::t("game.diff_hard", lang)
+            .chars()
+            .next()
+            .unwrap_or('H'),
+        hard_count
+    ));
+    let mut max_sidebar_line_w = stats_w;
+    for r in victories.iter() {
+        let name = if app.settings.naming_mode == "vivid" {
+            i18n::vivid_name(r.id, lang)
+        } else {
+            format!("#{}", r.id)
+        };
+        let diff_short = match r.difficulty.as_str() {
+            "简单" | "easy" => i18n::t("game.diff_easy", lang),
+            "困难" | "hard" => i18n::t("game.diff_hard", lang),
+            _ => i18n::t("game.diff_medium", lang),
+        };
+        let line = format!(
+            " {} {} {:02}:{:02} ❌{}/{}",
+            name,
+            diff_short,
+            r.elapsed_seconds / 60,
+            r.elapsed_seconds % 60,
+            r.errors,
+            r.errors_max
+        );
+        let w = display_width(&line);
+        if w > max_sidebar_line_w {
+            max_sidebar_line_w = w;
+        }
+    }
+    // 框内边距:左右各留 1 字符,共 +2
+    let sidebar_w: u16 = (max_sidebar_line_w as u16 + 2)
+        .max(20)
+        .min(area.width);
     let total_w = box_w as u16 + 2 + sidebar_w; // menu + gap + sidebar
 
     // If sidebar doesn't fit, skip it
@@ -154,20 +219,6 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
     // 侧边栏：胜利记录
     if has_sidebar {
         let sidebar_x = box_x + box_w as u16 + 2;
-        let victories = &app.menu.victories;
-        let total_v = victories.len();
-        let easy_count = victories
-            .iter()
-            .filter(|r| r.difficulty == "简单" || r.difficulty == "easy")
-            .count();
-        let med_count = victories
-            .iter()
-            .filter(|r| r.difficulty == "中等" || r.difficulty == "medium")
-            .count();
-        let hard_count = victories
-            .iter()
-            .filter(|r| r.difficulty == "困难" || r.difficulty == "hard")
-            .count();
 
         // 侧边栏高 = 顶 + 1(标题) + 1(分隔) + 1(统计) + 1(分隔) + N(列表) + 1(底)
         let list_rows = victories
