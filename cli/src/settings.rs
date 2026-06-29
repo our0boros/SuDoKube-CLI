@@ -11,8 +11,10 @@ pub struct AppSettings {
     pub standard_cell_width: usize, // 奇数
     pub bg_color: String,           // "black", "darkgray"
     pub border_color: String,       // "cyan", "white", "green"
-    pub guide_group_color: String,  // "green", "blue", "magenta"
-    pub guide_same_color: String,   // "blue", "magenta", "red"
+    pub guide_group_color: String,  // 同宫/同行/同列高亮背景色 "green","blue","magenta"
+    pub guide_group_fg: String,     // 同宫/同行/同列高亮字体色 "white","black"
+    pub guide_same_color: String,   // 同数字高亮背景色 "blue","magenta","red"
+    pub guide_same_fg: String,      // 同数字高亮字体色 "white","black"
     pub cube_scale: String,         // "0.3", "0.35", "0.4", "0.45", "0.5"
     pub show_cube: String,          // "yes", "no"
     pub cube_width: String,         // "16", "18", "20", "22", "24"
@@ -35,7 +37,9 @@ impl Default for AppSettings {
             bg_color: "black".into(),
             border_color: "cyan".into(),
             guide_group_color: "green".into(),
+            guide_group_fg: "white".into(),
             guide_same_color: "blue".into(),
+            guide_same_fg: "white".into(),
             cube_scale: "0.38".into(),
             show_cube: "yes".into(),
             cube_width: "20".into(),
@@ -73,10 +77,18 @@ impl AppSettings {
                 .ok()
                 .flatten()
                 .unwrap_or(def.guide_group_color),
+            guide_group_fg: save::load_setting("guide_group_fg")
+                .ok()
+                .flatten()
+                .unwrap_or(def.guide_group_fg),
             guide_same_color: save::load_setting("guide_same_color")
                 .ok()
                 .flatten()
                 .unwrap_or(def.guide_same_color),
+            guide_same_fg: save::load_setting("guide_same_fg")
+                .ok()
+                .flatten()
+                .unwrap_or(def.guide_same_fg),
             cube_scale: save::load_setting("cube_scale")
                 .ok()
                 .flatten()
@@ -133,7 +145,9 @@ impl AppSettings {
         let _ = save::save_setting("bg_color", &self.bg_color);
         let _ = save::save_setting("border_color", &self.border_color);
         let _ = save::save_setting("guide_group_color", &self.guide_group_color);
+        let _ = save::save_setting("guide_group_fg", &self.guide_group_fg);
         let _ = save::save_setting("guide_same_color", &self.guide_same_color);
+        let _ = save::save_setting("guide_same_fg", &self.guide_same_fg);
         let _ = save::save_setting("cube_scale", &self.cube_scale);
         let _ = save::save_setting("show_cube", &self.show_cube);
         let _ = save::save_setting("cube_width", &self.cube_width);
@@ -259,13 +273,26 @@ impl SettingsState {
             "magenta".into(),
         ];
         let bold_modes = vec!["off".into(), "on".into()];
+        let fg_colors = vec![
+            "white".into(),
+            "black".into(),
+            "gray".into(),
+            "cyan".into(),
+            "green".into(),
+            "yellow".into(),
+            "magenta".into(),
+            "red".into(),
+            "blue".into(),
+        ];
 
         let fields = vec![
             SettingsField::new("Cell Width", &s.standard_cell_width.to_string(), widths),
             SettingsField::new("BG Color", &s.bg_color, colors),
             SettingsField::new("Border Color", &s.border_color, border_colors.clone()),
-            SettingsField::new("Guide-Group", &s.guide_group_color, guide_colors.clone()),
-            SettingsField::new("Guide-Same", &s.guide_same_color, guide_colors),
+            SettingsField::new("Guide-Group BG", &s.guide_group_color, guide_colors.clone()),
+            SettingsField::new("Guide-Group FG", &s.guide_group_fg, fg_colors.clone()),
+            SettingsField::new("Guide-Same BG", &s.guide_same_color, guide_colors),
+            SettingsField::new("Guide-Same FG", &s.guide_same_fg, fg_colors),
             SettingsField::new("Input Color", &s.user_value_color, user_value_colors),
             SettingsField::new("Error Color", &s.error_value_color, error_value_colors),
             SettingsField::new("Error Bold", &s.error_bold, bold_modes),
@@ -298,20 +325,22 @@ impl SettingsState {
         s.bg_color = self.fields[1].value.clone();
         s.border_color = self.fields[2].value.clone();
         s.guide_group_color = self.fields[3].value.clone();
-        s.guide_same_color = self.fields[4].value.clone();
-        s.user_value_color = self.fields[5].value.clone();
-        s.error_value_color = self.fields[6].value.clone();
-        s.error_bold = self.fields[7].value.clone();
-        s.cube_scale = self.fields[8].value.clone();
-        s.show_cube = self.fields[9].value.clone();
-        s.cube_width = self.fields[10].value.clone();
-        s.cube_height = self.fields[11].value.clone();
-        s.cube_aspect = self.fields[12].value.clone();
-        s.debug_mode = self.fields[13].value.clone();
-        s.language = self.fields[14].value.clone();
-        s.naming_mode = self.fields[15].value.clone();
-        s.blink_highlight = self.fields[16].value.clone();
-        // fields[17] = "Keymap" — 不写入 AppSettings
+        s.guide_group_fg = self.fields[4].value.clone();
+        s.guide_same_color = self.fields[5].value.clone();
+        s.guide_same_fg = self.fields[6].value.clone();
+        s.user_value_color = self.fields[7].value.clone();
+        s.error_value_color = self.fields[8].value.clone();
+        s.error_bold = self.fields[9].value.clone();
+        s.cube_scale = self.fields[10].value.clone();
+        s.show_cube = self.fields[11].value.clone();
+        s.cube_width = self.fields[12].value.clone();
+        s.cube_height = self.fields[13].value.clone();
+        s.cube_aspect = self.fields[14].value.clone();
+        s.debug_mode = self.fields[15].value.clone();
+        s.language = self.fields[16].value.clone();
+        s.naming_mode = self.fields[17].value.clone();
+        s.blink_highlight = self.fields[18].value.clone();
+        // fields[19] = "Keymap" — 不写入 AppSettings
     }
 }
 

@@ -93,7 +93,9 @@ tr_map! {
     "settings.bg_color" => { zh: "背景颜色", en: "BG Color", ja: "背景色" },
     "settings.border_color" => { zh: "边框颜色", en: "Border Color", ja: "枠色" },
     "settings.guide_group" => { zh: "辅助-同组", en: "Guide-Group", ja: "ガイド-同組" },
+    "settings.guide_group_fg" => { zh: "同组字色", en: "Group FG", ja: "同組文字" },
     "settings.guide_same" => { zh: "辅助-同数", en: "Guide-Same", ja: "ガイド-同数" },
+    "settings.guide_same_fg" => { zh: "同数字色", en: "Same FG", ja: "同数文字" },
     "settings.cube_scale" => { zh: "Cube缩放", en: "Cube Scale", ja: "Cubeｽｹｰﾙ" },
     "settings.show_cube" => { zh: "显示Cube", en: "Show Cube", ja: "Cube表示" },
     "settings.cube_width" => { zh: "Cube宽度", en: "Cube Width", ja: "Cube幅" },
@@ -190,7 +192,7 @@ tr_map! {
 
     // Status panel
     "status.inventory" => { zh: "道具", en: "Items", ja: "道具" },
-    "status.wrong" => { zh: "❌ 输入错误", en: "❌ Wrong", ja: "❌ 間違い" },
+    "status.wrong" => { zh: "🎫  输入错误", en: "🎫  Wrong", ja: "🎫  間違い" },
 
     // Frozen state
     "frozen.title" => { zh: "容错次数耗尽", en: "Errors Exhausted", ja: "エラー回数切れ" },

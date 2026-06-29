@@ -837,7 +837,7 @@ fn draw_status_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, b
             };
             Span::styled(
                 format!(
-                    " ❌ {}/{}(+{})",
+                    " 🎫  {}/{}(+{})",
                     app.game.errors, app.game.errors_max, app.global_errors_max
                 ),
                 Style::default().fg(err_color),
@@ -1431,20 +1431,36 @@ fn draw_cell_row(
                 }
             }
 
-            let guide_group = parse_color(&app.settings.guide_group_color);
-            let guide_same = parse_color(&app.settings.guide_same_color);
+            let guide_group_bg = parse_color(&app.settings.guide_group_color);
+            let guide_group_fg = parse_color(&app.settings.guide_group_fg);
+            let guide_same_bg = parse_color(&app.settings.guide_same_color);
+            let guide_same_fg = parse_color(&app.settings.guide_same_fg);
             let user_fg = parse_color(&app.settings.user_value_color);
             let error_fg = parse_color(&app.settings.error_value_color);
             let error_bold = app.settings.error_bold == "on";
             // 闪烁逻辑:开启时 blink_on 在两态间切换;关闭时使用反色(白底黑字)保持高亮
             let blink_setting_on = app.settings.blink_highlight == "on";
             let blink_on = blink_setting_on && app.blink_on;
-            let error_style_base = if error_bold {
-                Style::default().fg(error_fg).add_modifier(Modifier::BOLD)
+            // 错误单元格的"指导高亮"区优先级:同宫+同数 > 同宫 > 同数 > 无
+            let guide_bg_for_cell = if in_same_group && has_same_number {
+                guide_same_bg
+            } else if in_same_group {
+                guide_group_bg
+            } else if has_same_number {
+                guide_same_bg
             } else {
-                Style::default().fg(error_fg)
+                Color::Reset
+            };
+            let error_style_base = if error_bold {
+                Style::default()
+                    .fg(error_fg)
+                    .bg(guide_bg_for_cell)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(error_fg).bg(guide_bg_for_cell)
             };
             let style = if selected && is_error {
+                // 选中且错误:错误色 + 白底(警告式高亮),保留错误身份
                 Style::default().bg(Color::White).fg(error_fg)
             } else if selected && blink_on {
                 Style::default().bg(Color::White).fg(Color::Black)
@@ -1453,14 +1469,15 @@ fn draw_cell_row(
             } else if selected {
                 // 闪烁关闭:反色(白底黑字),保证可视
                 Style::default().bg(Color::White).fg(Color::Black)
-            } else if in_same_group && has_same_number {
-                Style::default().bg(guide_same).fg(Color::White)
-            } else if in_same_group {
-                Style::default().bg(guide_group).fg(Color::White)
-            } else if has_same_number {
-                Style::default().bg(guide_same).fg(Color::White)
             } else if is_error {
+                // 错误:即使在指导高亮区,文字仍是错误色+加粗,背景继承指导色
                 error_style_base
+            } else if in_same_group && has_same_number {
+                Style::default().bg(guide_same_bg).fg(guide_same_fg)
+            } else if in_same_group {
+                Style::default().bg(guide_group_bg).fg(guide_group_fg)
+            } else if has_same_number {
+                Style::default().bg(guide_same_bg).fg(guide_same_fg)
             } else if is_given {
                 Style::default()
                     .fg(Color::Yellow)
