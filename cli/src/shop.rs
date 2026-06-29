@@ -26,10 +26,12 @@ pub enum ItemType {
     LocalRevive,
     /// 🖤 全局复活次数 — 增加全局容错上限(购买后立即生效)
     GlobalRevive,
+    /// 🔦 Guide 永久解锁 — 棋盘同宫/同数高亮功能,100 金币,仅可购一次
+    Guide,
 }
 
 impl ItemType {
-    pub fn all() -> [ItemType; 7] {
+    pub fn all() -> [ItemType; 8] {
         [
             ItemType::Cube,
             ItemType::Snake3,
@@ -38,6 +40,7 @@ impl ItemType {
             ItemType::Target,
             ItemType::LocalRevive,
             ItemType::GlobalRevive,
+            ItemType::Guide,
         ]
     }
 
@@ -51,6 +54,7 @@ impl ItemType {
             ItemType::Target => 40,
             ItemType::LocalRevive => 10,
             ItemType::GlobalRevive => 20,
+            ItemType::Guide => 100,
         }
     }
 
@@ -64,6 +68,7 @@ impl ItemType {
             ItemType::Target => "❗",
             ItemType::LocalRevive => "🩶",
             ItemType::GlobalRevive => "🖤",
+            ItemType::Guide => "🔦",
         }
     }
 
@@ -77,6 +82,7 @@ impl ItemType {
             ItemType::Target => "Tg",
             ItemType::LocalRevive => "LR",
             ItemType::GlobalRevive => "GR",
+            ItemType::Guide => "Gd",
         }
     }
 
@@ -99,6 +105,11 @@ impl ItemType {
         matches!(self, ItemType::Snake3 | ItemType::Snake5)
     }
 
+    /// 是否为 Guide 解锁(永久生效,只可购买一次,已购则在商店隐藏)
+    pub fn is_guide_unlock(&self) -> bool {
+        matches!(self, ItemType::Guide)
+    }
+
     /// i18n key: 名称
     pub fn name_key(&self) -> &'static str {
         match self {
@@ -109,6 +120,7 @@ impl ItemType {
             ItemType::Target => "shop.target",
             ItemType::LocalRevive => "shop.local_revive",
             ItemType::GlobalRevive => "shop.global_revive",
+            ItemType::Guide => "shop.guide_name",
         }
     }
 
@@ -122,6 +134,7 @@ impl ItemType {
             ItemType::Target => "shop.target_desc",
             ItemType::LocalRevive => "shop.local_revive_desc",
             ItemType::GlobalRevive => "shop.global_revive_desc",
+            ItemType::Guide => "shop.guide_desc",
         }
     }
 }
@@ -134,9 +147,12 @@ pub struct ShopItem {
 }
 
 /// 商店目录
-pub fn shop_catalog() -> Vec<ShopItem> {
+///
+/// `guide_owned` 决定是否显示 Guide 商品:已购买则隐藏(永久生效,只可买一次)
+pub fn shop_catalog(guide_owned: bool) -> Vec<ShopItem> {
     ItemType::all()
         .iter()
+        .filter(|&&t| !(t.is_guide_unlock() && guide_owned))
         .map(|&t| ShopItem {
             item_type: t,
             price: t.price(),
@@ -187,6 +203,7 @@ pub fn apply_tool(app: &mut crate::App, item: ItemType) -> Option<String> {
         }
         ItemType::LocalRevive => Some(apply_local_revive(app, lang)),
         ItemType::GlobalRevive => Some(apply_global_revive(app, lang)),
+        ItemType::Guide => Some(apply_guide_unlock(app, lang)),
     }
 }
 
@@ -557,4 +574,12 @@ fn apply_global_revive(app: &mut crate::App, lang: crate::i18n::Lang) -> String 
         );
     }
     crate::i18n::t("tool.global_revive_done", lang).to_string()
+}
+
+/// 🔦 Guide 解锁: 永久开启同宫/同数高亮;购买后自动启用并保存
+fn apply_guide_unlock(app: &mut crate::App, lang: crate::i18n::Lang) -> String {
+    app.settings.guide_owned = "on".into();
+    app.settings.guide_enabled = "on".into();
+    app.settings.save_to_db();
+    crate::i18n::t("tool.guide_done", lang).to_string()
 }

@@ -33,6 +33,12 @@ pub(super) fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> 
                     let idx = app.settings_ui.selected;
                     // Keymap 字段不走左右切换
                     if app.settings_ui.fields[idx].label != "Keymap" {
+                        // Guide 字段:未购买时锁定,不能切换
+                        if app.settings_ui.fields[idx].label == "Guide"
+                            && app.settings.guide_owned != "on"
+                        {
+                            return EventResult::Continue;
+                        }
                         app.settings_ui.fields[idx].cycle_prev();
                         app.settings_ui.apply_to(&mut app.settings);
                         app.settings.save_to_db();
@@ -45,6 +51,12 @@ pub(super) fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> 
                         app.settings_ui.visible = false;
                         app.screen = AppScreen::KeymapConfig;
                     } else if matches!(action, Some(Action::SettingsRight)) {
+                        // Guide 字段:未购买时锁定,不能切换
+                        if app.settings_ui.fields[idx].label == "Guide"
+                            && app.settings.guide_owned != "on"
+                        {
+                            return EventResult::Continue;
+                        }
                         app.settings_ui.fields[idx].cycle_next();
                         app.settings_ui.apply_to(&mut app.settings);
                         app.settings.save_to_db();
@@ -100,17 +112,24 @@ pub(super) fn handle_settings_event(app: &mut App, event: Event, area: Rect) -> 
             if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                 // 检查箭头点击
                 for (i, f) in layout.fields.iter().enumerate() {
+                    // Guide 字段未购买时锁定,鼠标点击也不允许切换
+                    let guide_locked = app.settings_ui.fields[i].label == "Guide"
+                        && app.settings.guide_owned != "on";
                     if rect_contains(f.left_arrow_rect, mouse.column, mouse.row) {
                         app.settings_ui.selected = i;
-                        app.settings_ui.fields[i].cycle_prev();
-                        app.settings_ui.apply_to(&mut app.settings);
-                        app.settings.save_to_db();
+                        if !guide_locked {
+                            app.settings_ui.fields[i].cycle_prev();
+                            app.settings_ui.apply_to(&mut app.settings);
+                            app.settings.save_to_db();
+                        }
                         return EventResult::Continue;
                     } else if rect_contains(f.right_arrow_rect, mouse.column, mouse.row) {
                         app.settings_ui.selected = i;
-                        app.settings_ui.fields[i].cycle_next();
-                        app.settings_ui.apply_to(&mut app.settings);
-                        app.settings.save_to_db();
+                        if !guide_locked {
+                            app.settings_ui.fields[i].cycle_next();
+                            app.settings_ui.apply_to(&mut app.settings);
+                            app.settings.save_to_db();
+                        }
                         return EventResult::Continue;
                     } else if rect_contains(f.label_rect, mouse.column, mouse.row)
                         || rect_contains(f.value_rect, mouse.column, mouse.row)

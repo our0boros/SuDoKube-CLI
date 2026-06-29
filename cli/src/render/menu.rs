@@ -104,7 +104,7 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
                     i18n::t("menu.in_progress", lang)
                 };
                 format!(
-                    "{} {} | {} | {} | {}/{} | {:02}:{:02} | ❌{}/{} | {}",
+                    "{} {} | {} | {} | {}/{} | {:02}:{:02} | 🎫 {}/{} | {}",
                     i18n::t("menu.continue", lang),
                     name,
                     r.difficulty,
@@ -178,7 +178,7 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
             _ => i18n::t("game.diff_medium", lang),
         };
         let line = format!(
-            " {} {} {:02}:{:02} ❌{}/{}",
+            " {} {} {:02}:{:02} 🎫 {}/{}",
             name,
             diff_short,
             r.elapsed_seconds / 60,
@@ -286,7 +286,7 @@ pub(super) fn draw_menu(f: &mut Frame, app: &App) {
                 _ => i18n::t("game.diff_medium", lang),
             };
             let text = format!(
-                " {} {} {:02}:{:02} ❌{}/{}",
+                " {} {} {:02}:{:02} 🎫 {}/{}",
                 name,
                 diff_short,
                 r.elapsed_seconds / 60,

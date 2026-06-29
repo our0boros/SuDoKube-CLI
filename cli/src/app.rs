@@ -72,7 +72,7 @@ pub struct App {
 
 impl App {
     pub fn new_menu() -> Self {
-        Self {
+        let mut app = Self {
             screen: AppScreen::Menu,
             menu: MenuState::new(),
             game: GameState::new(
@@ -85,7 +85,8 @@ impl App {
             current_face: Face::Front,
             cursor: (4, 4),
             render_mode: RenderMode::Standard,
-            guidance: true,
+            // guidance 在下方 settings 加载后赋值(避免重复 load_from_db)
+            guidance: false,
             blink_on: true,
             message: String::new(),
             message_until: None,
@@ -124,7 +125,10 @@ impl App {
             frozen_select: 0,
             config: config::GameConfig::default(),
             keymap: config::Keymap::load_from_db(),
-        }
+        };
+        // 从 settings 派生 guidance 状态
+        app.guidance = app.settings.guide_active();
+        app
     }
 
     pub fn start_game(game: GameState) -> Self {
@@ -197,7 +201,7 @@ impl App {
     }
 
     /// 购买一个商店商品,扣减金币。
-    /// 容错道具直接生效(不入背包)，其余道具加到背包。
+    /// 容错道具 / Guide 解锁直接生效(不入背包)，其余道具加到背包。
     /// 成功返回 true;金币不足返回 false。
     pub fn buy_item(&mut self, item: shop::ItemType) -> bool {
         let price = item.price();
@@ -206,8 +210,8 @@ impl App {
         }
         self.gold -= price;
         let _ = save::save_setting("player_gold", &self.gold.to_string());
-        if item.is_revive() {
-            // 容错道具购买后直接生效
+        if item.is_revive() || item.is_guide_unlock() {
+            // 容错道具 / Guide 购买后直接生效;Guide 仅可买一次(目录已过滤)
             shop::apply_tool(self, item);
         } else {
             *self.inventory.entry(item).or_insert(0) += 1;

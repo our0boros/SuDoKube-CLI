@@ -506,11 +506,20 @@ fn build_layout(
                 ("[E]rase", ButtonId::Erase, crate::THEME_NEUTRAL),
                 ("[H]int", ButtonId::Hint, crate::THEME_SUCCESS),
                 ("[Z]Undo", ButtonId::Undo, crate::THEME_NEUTRAL),
+                // Guide 按钮: 仅在已购买(Disable/Enable)时显示;Lock 状态隐藏
                 ("[G]uide", ButtonId::ToggleGuidance, crate::THEME_NEUTRAL),
                 ("[M]ode", ButtonId::ToggleMode, crate::THEME_NEUTRAL),
                 ("[Q]uit", ButtonId::Quit, crate::THEME_DANGER),
             ]
             .iter()
+            .filter(|(label, _, _)| {
+                // 未购 Guide 时隐藏 Guide 按钮
+                if label.contains("Guide") {
+                    app.settings.guide_owned == "on"
+                } else {
+                    true
+                }
+            })
             .map(|(label, id, theme)| {
                 let w = label.chars().count() as u16;
                 (label.to_string(), *id, w, *theme)
@@ -1001,7 +1010,7 @@ fn draw_shop_panel(f: &mut Frame, layout: &GameLayout, app: &App, bg: Color, bor
         return;
     }
 
-    let catalog = crate::shop::shop_catalog();
+    let catalog = crate::shop::shop_catalog(app.settings.guide_owned == "on");
     let _item_h: u16 = 3; // 每项 3 行(图标名 + 描述 + 价格/数量)
     let items_per_page = 4usize;
     let total_pages = ((catalog.len() + items_per_page - 1) / items_per_page).max(1) as u16;
@@ -1408,7 +1417,7 @@ fn draw_cell_row(
             let value = cell.and_then(|c| c.user_value);
             let is_error = value.map_or(false, |n| is_wrong(app, coord, n));
 
-            let (in_same_group, has_same_number) = if app.guidance && !selected {
+            let (in_same_group, has_same_number) = if app.settings.guide_active() && !selected {
                 let sel_coord = app.current_face.to_cube(app.cursor.0, app.cursor.1);
                 let same_row = app.cursor.1 == v as u8;
                 let same_col = app.cursor.0 == u as u8;
@@ -1441,7 +1450,8 @@ fn draw_cell_row(
             // 闪烁逻辑:开启时 blink_on 在两态间切换;关闭时使用反色(白底黑字)保持高亮
             let blink_setting_on = app.settings.blink_highlight == "on";
             let blink_on = blink_setting_on && app.blink_on;
-            // 错误单元格的"指导高亮"区优先级:同宫+同数 > 同宫 > 同数 > 无
+            // 错误单元格的"指导高亮"区优先级:同宫+同数 > 同宫 > 同数 > 默认背景
+            let default_bg = parse_color(&app.settings.bg_color);
             let guide_bg_for_cell = if in_same_group && has_same_number {
                 guide_same_bg
             } else if in_same_group {
@@ -1449,7 +1459,7 @@ fn draw_cell_row(
             } else if has_same_number {
                 guide_same_bg
             } else {
-                Color::Reset
+                default_bg
             };
             let error_style_base = if error_bold {
                 Style::default()

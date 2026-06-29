@@ -27,6 +27,8 @@ pub struct AppSettings {
     pub user_value_color: String,   // "white", "cyan", "magenta", "blue", "green", "gray"
     pub error_value_color: String,  // "red", "yellow", "magenta"
     pub error_bold: String,         // "off", "on"
+    pub guide_owned: String,        // "off"=Lock(未购), "on"=已购
+    pub guide_enabled: String,      // "off"=Disable, "on"=Enable;仅在 guide_owned="on" 时可改
 }
 
 impl Default for AppSettings {
@@ -52,6 +54,8 @@ impl Default for AppSettings {
             user_value_color: "white".into(),
             error_value_color: "red".into(),
             error_bold: "on".into(),
+            guide_owned: "off".into(),
+            guide_enabled: "off".into(),
         }
     }
 }
@@ -137,6 +141,14 @@ impl AppSettings {
                 .ok()
                 .flatten()
                 .unwrap_or(def.error_bold),
+            guide_owned: save::load_setting("guide_owned")
+                .ok()
+                .flatten()
+                .unwrap_or(def.guide_owned),
+            guide_enabled: save::load_setting("guide_enabled")
+                .ok()
+                .flatten()
+                .unwrap_or(def.guide_enabled),
         }
     }
 
@@ -160,6 +172,35 @@ impl AppSettings {
         let _ = save::save_setting("user_value_color", &self.user_value_color);
         let _ = save::save_setting("error_value_color", &self.error_value_color);
         let _ = save::save_setting("error_bold", &self.error_bold);
+        let _ = save::save_setting("guide_owned", &self.guide_owned);
+        let _ = save::save_setting("guide_enabled", &self.guide_enabled);
+    }
+}
+
+/// Guide 功能状态。共三种:
+/// - `Locked`   未购买(新存档默认),商店提供 Guide 商品(100 金币)
+/// - `Disabled` 已购但用户关闭
+/// - `Enabled`  已购并启用,棋盘高亮同宫/同数
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuideState {
+    Locked,
+    Disabled,
+    Enabled,
+}
+
+impl AppSettings {
+    pub fn guide_state(&self) -> GuideState {
+        if self.guide_owned != "on" {
+            GuideState::Locked
+        } else if self.guide_enabled == "on" {
+            GuideState::Enabled
+        } else {
+            GuideState::Disabled
+        }
+    }
+
+    pub fn guide_active(&self) -> bool {
+        self.guide_state() == GuideState::Enabled
     }
 }
 
@@ -296,6 +337,7 @@ impl SettingsState {
             SettingsField::new("Input Color", &s.user_value_color, user_value_colors),
             SettingsField::new("Error Color", &s.error_value_color, error_value_colors),
             SettingsField::new("Error Bold", &s.error_bold, bold_modes),
+            SettingsField::new("Guide", &s.guide_enabled, vec!["off".into(), "on".into()]),
             SettingsField::new("Cube Scale", &s.cube_scale, cube_scales),
             SettingsField::new("Show Cube", &s.show_cube, yes_no),
             SettingsField::new("Cube Width", &s.cube_width, cube_widths),
@@ -331,16 +373,22 @@ impl SettingsState {
         s.user_value_color = self.fields[7].value.clone();
         s.error_value_color = self.fields[8].value.clone();
         s.error_bold = self.fields[9].value.clone();
-        s.cube_scale = self.fields[10].value.clone();
-        s.show_cube = self.fields[11].value.clone();
-        s.cube_width = self.fields[12].value.clone();
-        s.cube_height = self.fields[13].value.clone();
-        s.cube_aspect = self.fields[14].value.clone();
-        s.debug_mode = self.fields[15].value.clone();
-        s.language = self.fields[16].value.clone();
-        s.naming_mode = self.fields[17].value.clone();
-        s.blink_highlight = self.fields[18].value.clone();
-        // fields[19] = "Keymap" — 不写入 AppSettings
+        // Guide 字段:仅在已购买时允许修改 enable;否则强制保持 off(Lock 状态)
+        if s.guide_owned == "on" {
+            s.guide_enabled = self.fields[10].value.clone();
+        } else {
+            s.guide_enabled = "off".into();
+        }
+        s.cube_scale = self.fields[11].value.clone();
+        s.show_cube = self.fields[12].value.clone();
+        s.cube_width = self.fields[13].value.clone();
+        s.cube_height = self.fields[14].value.clone();
+        s.cube_aspect = self.fields[15].value.clone();
+        s.debug_mode = self.fields[16].value.clone();
+        s.language = self.fields[17].value.clone();
+        s.naming_mode = self.fields[18].value.clone();
+        s.blink_highlight = self.fields[19].value.clone();
+        // fields[20] = "Keymap" — 不写入 AppSettings
     }
 }
 

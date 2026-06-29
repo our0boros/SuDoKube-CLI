@@ -104,7 +104,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
     // 商店焦点激活时
     if app.shop_focused {
         let lang = Lang::from_code(&app.settings.language);
-        let catalog_len = crate::shop::shop_catalog().len();
+        let catalog_len = crate::shop::shop_catalog(app.settings.guide_owned == "on").len();
         let items_per_page: usize = 4;
         match action {
             Some(Action::Cancel) => {
@@ -127,7 +127,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
                 app.shop_page = page;
             }
             Some(Action::ShopBuy) => {
-                if let Some(item) = crate::shop::shop_catalog()
+                if let Some(item) = crate::shop::shop_catalog(app.settings.guide_owned == "on")
                     .get(app.shop_selected)
                     .map(|s| s.item_type)
                 {
@@ -189,7 +189,16 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             }
         }
         Some(Action::ToggleGuidance) => {
-            app.guidance = !app.guidance;
+            // Guide 切换: 仅在已购买(owned)时有效;未购则提示锁定
+            if app.settings.guide_owned != "on" {
+                let lang = Lang::from_code(&app.settings.language);
+                app.set_message(i18n::t("guide.locked", lang).to_string(), Duration::from_secs(2));
+                return EventResult::Continue;
+            }
+            let new_val = if app.settings.guide_enabled == "on" { "off" } else { "on" };
+            app.settings.guide_enabled = new_val.into();
+            app.settings.save_to_db();
+            app.guidance = app.settings.guide_active();
             let lang = Lang::from_code(&app.settings.language);
             let key = if app.guidance {
                 "msg.guide_on"
@@ -248,7 +257,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
                     value,
                     app.cursor.1 + 1,
                     app.cursor.0 + 1,
-                    if is_wrong { " ❌" } else { "" }
+                    if is_wrong { " ❌ " } else { "" }
                 ),
                 50,
             );
@@ -455,7 +464,7 @@ fn handle_mouse(app: &mut App, layout: &GameLayout, mouse: MouseEvent) -> EventR
             if let Some(item_idx) = shop_item_at(layout, mouse.column, mouse.row) {
                 app.shop_selected = item_idx;
                 app.shop_focused = true;
-                if let Some(item) = crate::shop::shop_catalog()
+                if let Some(item) = crate::shop::shop_catalog(app.settings.guide_owned == "on")
                     .get(item_idx)
                     .map(|s| s.item_type)
                 {
@@ -564,11 +573,18 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
             app.set_message("已撤销", Duration::from_secs(2));
         }
         ButtonId::ToggleGuidance => {
-            app.guidance = !app.guidance;
-            app.set_message(
-                format!("辅助模式{}", if app.guidance { "开" } else { "关" }),
-                Duration::from_secs(2),
-            );
+            if app.settings.guide_owned != "on" {
+                let lang = Lang::from_code(&app.settings.language);
+                app.set_message(i18n::t("guide.locked", lang).to_string(), Duration::from_secs(2));
+                return EventResult::Continue;
+            }
+            let new_val = if app.settings.guide_enabled == "on" { "off" } else { "on" };
+            app.settings.guide_enabled = new_val.into();
+            app.settings.save_to_db();
+            app.guidance = app.settings.guide_active();
+            let lang = Lang::from_code(&app.settings.language);
+            let key = if app.guidance { "msg.guide_on" } else { "msg.guide_off" };
+            app.set_message(i18n::t(key, lang).to_string(), Duration::from_secs(2));
         }
         ButtonId::ToggleMode => {
             app.render_mode = app.render_mode.toggle();

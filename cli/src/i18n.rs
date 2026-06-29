@@ -106,6 +106,12 @@ tr_map! {
     "settings.user_value_color" => { zh: "输入色", en: "Input Color", ja: "入力色" },
     "settings.error_value_color" => { zh: "错误色", en: "Error Color", ja: "ｴﾗｰ色" },
     "settings.error_bold" => { zh: "错误加粗", en: "Error Bold", ja: "ｴﾗｰ太字" },
+    "settings.guide" => { zh: "辅助高亮", en: "Guide", ja: "ｶﾞｲﾄﾞ" },
+    "guide.locked" => { zh: "未购买", en: "Locked", ja: "未購入" },
+    "guide.disabled" => { zh: "已关闭", en: "Disabled", ja: "無効" },
+    "guide.enabled" => { zh: "已启用", en: "Enabled", ja: "有効" },
+    "shop.guide_name" => { zh: "辅助高亮(永久)", en: "Guide (Permanent)", ja: "ｶﾞｲﾄﾞ(永久)" },
+    "shop.guide_desc" => { zh: "解锁棋盘同宫/同数高亮功能。购买后自动启用。", en: "Unlock same-house / same-number highlights. Auto-enables on purchase.", ja: "同宮/同数のｶﾞｲﾄﾞ機能を解放。購入後自動で有効化。" },
     "settings.keymap_title" => { zh: "键位设置", en: "Keymap Config", ja: "ｷｰﾏｯﾋﾟﾝｸﾞ" },
     "settings.keymap_hint" => { zh: "↑↓选择 Enter修改 Esc返回", en: "↑↓ Select Enter Edit Esc Back", ja: "↑↓ 選択 Enter変更 Esc戻る" },
     "settings.keymap_hint_wait" => { zh: "请按新键位或 Esc 取消", en: "Press new key or Esc to cancel", ja: "新ｷｰ押すかEscｷｬﾝｾﾙ" },
@@ -189,6 +195,7 @@ tr_map! {
     "tool.snake_todo" => { zh: "贪吃蛇功能开发中", en: "Snake game coming soon", ja: "ｽﾈｰｸ準備中" },
     "tool.local_revive_done" => { zh: "🩶 当局容错+1", en: "🩶 Local error+1", ja: "🩶 局内ｴﾗｰ+1" },
     "tool.global_revive_done" => { zh: "🖤 全局容错+1", en: "🖤 Global error+1", ja: "🖤 全体ｴﾗｰ+1" },
+    "tool.guide_done" => { zh: "🔦 Guide 已解锁并启用", en: "🔦 Guide unlocked & enabled", ja: "🔦 ｶﾞｲﾄﾞ解放＆有効" },
 
     // Status panel
     "status.inventory" => { zh: "道具", en: "Items", ja: "道具" },

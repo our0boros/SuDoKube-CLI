@@ -181,6 +181,15 @@ pub(super) fn draw_settings_overlay(f: &mut Frame, app: &App) {
         // 显示值
         let display_value = if field.label == "Naming Mode" {
             i18n::t(&format!("naming.{}", field.value), lang).to_string()
+        } else if field.label == "Guide" {
+            // 根据 Lock/Disable/Enable 显示对应本地化文字
+            let state = app.settings.guide_state();
+            let key = match state {
+                crate::settings::GuideState::Locked => "guide.locked",
+                crate::settings::GuideState::Disabled => "guide.disabled",
+                crate::settings::GuideState::Enabled => "guide.enabled",
+            };
+            i18n::t(key, lang).to_string()
         } else {
             field.value.clone()
         };
