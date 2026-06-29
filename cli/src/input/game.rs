@@ -70,7 +70,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             Some(Action::CursorDown) => {
                 app.frozen_select = if app.frozen_select == 0 { 1 } else { 0 };
             }
-            Some(Action::Confirm) => {
+            Some(Action::Confirm) | Some(Action::ShopBuy) => {
                 let item = if app.frozen_select == 0 {
                     crate::shop::ItemType::LocalRevive
                 } else {

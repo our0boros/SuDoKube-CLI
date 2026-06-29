@@ -167,7 +167,7 @@ tr_map! {
     "shop.local_revive_desc" => { zh: "当局容错上限+1(直接生效)", en: "Local error limit+1 (instant)", ja: "局内ｴﾗｰ上限+1(即時)" },
     "shop.global_revive" => { zh: "全局容错+1", en: "Global Error+1", ja: "全体ｴﾗｰ+1" },
     "shop.global_revive_desc" => { zh: "全局容错上限+1(直接生效)", en: "Global error limit+1 (instant)", ja: "全体ｴﾗｰ上限+1(即時)" },
-    "shop.gold_unit" => { zh: "币", en: "g", ja: "G" },
+    "shop.gold_unit" => { zh: "💰", en: "💰", ja: "💰" },
     "shop.hint_focused" => { zh: "PgUp/Dn 切换 Enter 购买 Tab 退出", en: "PgUp/Dn switch Enter buy Tab exit", ja: "PgUp/Dn 選択 Enter 購入 Tab 終了" },
     "shop.hint_unfocused" => { zh: "Tab 进入商店", en: "Tab to focus shop", ja: "Tab でｼｮｯﾌﾟ選択" },
     "shop.bought" => { zh: "已购入", en: "Bought", ja: "購入済" },
@@ -193,7 +193,7 @@ tr_map! {
     "frozen.title" => { zh: "容错次数耗尽", en: "Errors Exhausted", ja: "エラー回数切れ" },
     "frozen.errors_info" => { zh: "错误次数", en: "Errors", ja: "エラー" },
     "frozen.buy_hint" => { zh: "是否购买容错次数?", en: "Buy error tolerance?", ja: "エラー回数を購入?" },
-    "frozen.hint" => { zh: "↑↓ 选择  Enter 购买  Q 退出", en: "↑↓ Select  Enter Buy  Q Quit", ja: "↑↓ 選択  Enter 購入  Q 終了" },
+    "frozen.hint" => { zh: "W/S 选择  Enter 购买  Q 退出", en: "W/S Select  Enter Buy  Q Quit", ja: "W/S 選択  Enter 購入  Q 終了" },
 
     // Victory extra
     "victory.reward" => { zh: "金币 +{}", en: "Gold +{}", ja: "ｺﾞｰﾙﾄﾞ +{}" },
