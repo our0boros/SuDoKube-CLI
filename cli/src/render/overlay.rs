@@ -634,6 +634,7 @@ fn action_scene_priority(action: &crate::config::Action) -> i32 {
         | crate::config::Action::Hint
         | crate::config::Action::Undo
         | crate::config::Action::ToggleGuidance
+        | crate::config::Action::ToggleDraft
         | crate::config::Action::ToggleMode
         | crate::config::Action::NewGame => 4,
         // 按钮

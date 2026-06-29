@@ -43,6 +43,11 @@ pub fn continue_game(record: &GameRecord) -> GameState {
             }
         }
     }
+    // 恢复草稿数据
+    {
+        let coords: Vec<CubeCoord> = sudokube_core::cube::iter_surface_coords().collect();
+        crate::save::apply_draft_to_grid(&mut game.grid, &record.draft, &coords);
+    }
     game.id = Some(record.id);
     game.elapsed_seconds = record.elapsed_seconds as u64;
     game.started_at = now_secs();

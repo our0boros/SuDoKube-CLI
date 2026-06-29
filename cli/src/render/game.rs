@@ -495,22 +495,43 @@ fn build_layout(
     )
     .collect();
 
+    // 草稿模式下数字按钮使用上标数字
+    let superscripts = ['¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
+
     let btn_defs: Vec<(String, ButtonId, u16, crate::ButtonTheme)> = (1..=9u8)
         .map(|n| {
-            let label = format!("[{}]", n);
+            let label = if app.game.draft_mode {
+                format!("O{}", superscripts[(n - 1) as usize])
+            } else {
+                format!("[{}]", n)
+            };
             let w = label.chars().count() as u16;
             (label, ButtonId::Number(n), w, crate::THEME_PRIMARY)
         })
         .chain(
-            [
-                ("[E]rase", ButtonId::Erase, crate::THEME_NEUTRAL),
-                ("[H]int", ButtonId::Hint, crate::THEME_SUCCESS),
-                ("[Z]Undo", ButtonId::Undo, crate::THEME_NEUTRAL),
-                // Guide 按钮: 仅在已购买(Disable/Enable)时显示;Lock 状态隐藏
-                ("[G]uide", ButtonId::ToggleGuidance, crate::THEME_NEUTRAL),
-                ("[M]ode", ButtonId::ToggleMode, crate::THEME_NEUTRAL),
-                ("[Q]uit", ButtonId::Quit, crate::THEME_DANGER),
-            ]
+            {
+                let lang = Lang::from_code(&app.settings.language);
+                let draft_label = if app.game.draft_mode {
+                    i18n::t("btn.draft_on", lang).to_string()
+                } else {
+                    i18n::t("btn.draft", lang).to_string()
+                };
+                let draft_theme = if app.game.draft_mode {
+                    crate::THEME_SUCCESS
+                } else {
+                    crate::THEME_NEUTRAL
+                };
+                [
+                    ("[E]rase".to_string(), ButtonId::Erase, crate::THEME_NEUTRAL),
+                    ("[H]int".to_string(), ButtonId::Hint, crate::THEME_SUCCESS),
+                    ("[Z]Undo".to_string(), ButtonId::Undo, crate::THEME_NEUTRAL),
+                    // Guide 按钮: 仅在已购买(Disable/Enable)时显示;Lock 状态隐藏
+                    ("[G]uide".to_string(), ButtonId::ToggleGuidance, crate::THEME_NEUTRAL),
+                    ("[M]ode".to_string(), ButtonId::ToggleMode, crate::THEME_NEUTRAL),
+                    (draft_label, ButtonId::ToggleDraft, draft_theme),
+                    ("[Q]uit".to_string(), ButtonId::Quit, crate::THEME_DANGER),
+                ]
+            }
             .iter()
             .filter(|(label, _, _)| {
                 // 未购 Guide 时隐藏 Guide 按钮
@@ -522,7 +543,7 @@ fn build_layout(
             })
             .map(|(label, id, theme)| {
                 let w = label.chars().count() as u16;
-                (label.to_string(), *id, w, *theme)
+                (label.clone(), *id, w, *theme)
             }),
         )
         .chain(tool_defs.iter().map(|(label, id, theme)| {
@@ -1417,6 +1438,17 @@ fn draw_cell_row(
             let value = cell.and_then(|c| c.user_value);
             let is_error = value.map_or(false, |n| is_wrong(app, coord, n));
 
+            // 草稿数据
+            let draft: Vec<u8> = cell.map(|c| c.draft.iter().copied().collect()).unwrap_or_default();
+            // 格子尺寸足够显示3x3草稿: cw >= 3 且 ch >= 3
+            let can_show_draft = cw >= 3 && ch >= 3;
+            // 草稿显示条件: 有草稿内容 + 非给定 + 格子无user_value + 格子尺寸足够
+            // (草稿在两种模式下都可见,仅在填入数字时由 value.is_none() 自动隐藏)
+            let show_draft = !draft.is_empty()
+                && value.is_none()
+                && !is_given
+                && can_show_draft;
+
             let (in_same_group, has_same_number) = if app.settings.guide_active() && !selected {
                 let sel_coord = app.current_face.to_cube(app.cursor.0, app.cursor.1);
                 let same_row = app.cursor.1 == v as u8;
@@ -1432,7 +1464,38 @@ fn draw_cell_row(
 
             let mid_line = ch / 2;
             let mut content = " ".repeat(cw);
-            if line == mid_line {
+
+            if show_draft {
+                // 草稿3x3布局渲染
+                // 将9个数字排列为3行3列，每行对应 line
+                // 草稿行: 0,1,2 -> line 在格子内的行号
+                // 格子内行: 0..ch
+                // 3行草稿居中放置
+                let draft_rows = 3usize;
+                let start_line = if ch > draft_rows { (ch - draft_rows) / 2 } else { 0 };
+                let line_in_draft = if line >= start_line && line < start_line + draft_rows {
+                    Some(line - start_line)
+                } else {
+                    None
+                };
+
+                if let Some(dr) = line_in_draft {
+                    // 计算每列的位置（3列居中）
+                    let draft_cols = 3usize;
+                    let col_start = if cw > draft_cols { (cw - draft_cols) / 2 } else { 0 };
+                    let mut chars: Vec<char> = " ".repeat(cw).chars().collect();
+                    for dc in 0..draft_cols {
+                        let n = dr * 3 + dc + 1; // 数字 1-9
+                        if draft.contains(&(n as u8)) {
+                            let ch_pos = col_start + dc;
+                            if ch_pos < cw {
+                                chars[ch_pos] = (b'0' + n as u8) as char;
+                            }
+                        }
+                    }
+                    content = chars.into_iter().collect();
+                }
+            } else if line == mid_line {
                 if let Some(n) = value {
                     let s = ((b'0' + n) as char).to_string();
                     let start = (cw - 1) / 2;
@@ -1479,6 +1542,9 @@ fn draw_cell_row(
             } else if selected {
                 // 闪烁关闭:反色(白底黑字),保证可视
                 Style::default().bg(Color::White).fg(Color::Black)
+            } else if show_draft {
+                // 草稿数字使用较淡的颜色,背景继承当前单元格的指导高亮色,保持视觉一致
+                Style::default().fg(Color::DarkGray).bg(guide_bg_for_cell)
             } else if is_error {
                 // 错误:即使在指导高亮区,文字仍是错误色+加粗,背景继承指导色
                 error_style_base

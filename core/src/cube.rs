@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeSet};
 
 /// 立方体表面的三维坐标。每个坐标在 0..9 之间，且至少一维为 0 或 8。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -316,6 +316,10 @@ pub struct Cell {
     pub answer: u8,
     pub given: bool,
     pub user_value: Option<u8>,
+    /// 草稿标记集合（1-9），使用 BTreeSet 保证有序
+    pub draft: BTreeSet<u8>,
+    /// 草稿是否可见（关闭草稿模式时隐藏，擦除时重新显示）
+    pub draft_visible: bool,
 }
 
 impl Cell {
@@ -324,11 +328,29 @@ impl Cell {
             answer,
             given,
             user_value: if given { Some(answer) } else { None },
+            draft: BTreeSet::new(),
+            draft_visible: true,
         }
     }
 
     pub fn is_correct(&self) -> bool {
         self.user_value == Some(self.answer)
+    }
+
+    /// 切换草稿数字：若已存在则擦除，否则添加
+    pub fn toggle_draft(&mut self, n: u8) {
+        if self.draft.contains(&n) {
+            self.draft.remove(&n);
+        } else {
+            self.draft.insert(n);
+        }
+    }
+
+    /// 擦除草稿数字，同时标记草稿为可见
+    pub fn erase_draft(&mut self, n: u8) {
+        if self.draft.remove(&n) {
+            self.draft_visible = true;
+        }
     }
 }
 

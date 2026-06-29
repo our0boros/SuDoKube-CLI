@@ -58,6 +58,7 @@ pub enum ButtonId {
     Undo,
     ToggleGuidance,
     ToggleMode,
+    ToggleDraft,
     Quit,
     // 道具工具
     ToolCube,

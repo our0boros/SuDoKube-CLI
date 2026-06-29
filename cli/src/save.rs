@@ -23,6 +23,7 @@ pub struct GameRecord {
     pub errors: u32,
     pub errors_max: u32,
     pub frozen: bool,
+    pub draft: String,
 }
 
 pub fn init_db() -> Result<Connection> {
@@ -60,6 +61,11 @@ pub fn init_db() -> Result<Connection> {
         "ALTER TABLE games ADD COLUMN frozen BOOLEAN NOT NULL DEFAULT 0",
         [],
     );
+    // 草稿数据
+    let _ = conn.execute(
+        "ALTER TABLE games ADD COLUMN draft TEXT NOT NULL DEFAULT ''",
+        [],
+    );
     // 设置表
     conn.execute(
         "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -93,6 +99,7 @@ pub fn save_game(state: &GameState) -> Result<i64> {
     let answer_str = serialize_solution(&state.solution, &coords);
     let puzzle_str = state.grid.serialize(&coords);
     let given_str = serialize_given(&state.grid, &coords);
+    let draft_str = serialize_draft(&state.grid, &coords);
     let started = Local::now().naive_local();
     let finished = if state.completed { Some(started) } else { None };
 
@@ -110,8 +117,9 @@ pub fn save_game(state: &GameState) -> Result<i64> {
                 moves = ?9,
                 errors = ?10,
                 errors_max = ?11,
-                frozen = ?12
-             WHERE id = ?13",
+                frozen = ?12,
+                draft = ?13
+             WHERE id = ?14",
             params![
                 started.format("%Y-%m-%d %H:%M:%S").to_string(),
                 finished.map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string()),
@@ -125,14 +133,15 @@ pub fn save_game(state: &GameState) -> Result<i64> {
                 state.errors,
                 state.errors_max,
                 state.frozen,
+                draft_str,
                 id
             ],
         )?;
         Ok(id)
     } else {
         conn.execute(
-            "INSERT INTO games (started_at, finished_at, elapsed_seconds, difficulty, completed, answer, puzzle, given, moves, errors, errors_max, frozen)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO games (started_at, finished_at, elapsed_seconds, difficulty, completed, answer, puzzle, given, moves, errors, errors_max, frozen, draft)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 started.format("%Y-%m-%d %H:%M:%S").to_string(),
                 finished.map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string()),
@@ -145,7 +154,8 @@ pub fn save_game(state: &GameState) -> Result<i64> {
                 "",
                 state.errors,
                 state.errors_max,
-                state.frozen
+                state.frozen,
+                draft_str
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -173,7 +183,7 @@ pub fn load_completed(limit: usize) -> Result<Vec<GameRecord>> {
 fn load_records(where_clause: &str, limit: usize) -> Result<Vec<GameRecord>> {
     let conn = init_db()?;
     let sql = format!(
-        "SELECT id, started_at, finished_at, elapsed_seconds, difficulty, completed, answer, puzzle, given, errors, errors_max, frozen
+        "SELECT id, started_at, finished_at, elapsed_seconds, difficulty, completed, answer, puzzle, given, errors, errors_max, frozen, draft
          FROM games {}",
         where_clause
     );
@@ -185,6 +195,7 @@ fn load_records(where_clause: &str, limit: usize) -> Result<Vec<GameRecord>> {
         let answer: String = row.get(6)?;
         let puzzle: String = row.get(7)?;
         let given: String = row.get(8)?;
+        let draft: String = row.get(12).unwrap_or_default();
         Ok(GameRecord {
             id: row.get(0)?,
             started_at: NaiveDateTime::parse_from_str(&started, "%Y-%m-%d %H:%M:%S")
@@ -200,6 +211,7 @@ fn load_records(where_clause: &str, limit: usize) -> Result<Vec<GameRecord>> {
             errors: row.get(9)?,
             errors_max: row.get(10)?,
             frozen: row.get(11)?,
+            draft,
         })
     })?;
 
@@ -221,6 +233,42 @@ fn serialize_given(grid: &sudokube_core::cube::CubeGrid, coords: &[CubeCoord]) -
             _ => '0',
         })
         .collect()
+}
+
+/// 序列化草稿数据: 每格用9个字符(1=有,0=无)表示1-9的草稿标记,格间用逗号分隔
+fn serialize_draft(grid: &sudokube_core::cube::CubeGrid, coords: &[CubeCoord]) -> String {
+    coords
+        .iter()
+        .map(|c| {
+            if let Some(cell) = grid.get(c) {
+                (1..=9u8)
+                    .map(|n| if cell.draft.contains(&n) { '1' } else { '0' })
+                    .collect::<String>()
+            } else {
+                "000000000".to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// 反序列化草稿数据,应用到 grid 中
+pub fn apply_draft_to_grid(grid: &mut sudokube_core::cube::CubeGrid, draft_data: &str, coords: &[CubeCoord]) {
+    if draft_data.is_empty() {
+        return;
+    }
+    let entries: Vec<&str> = draft_data.split(',').collect();
+    for (i, coord) in coords.iter().enumerate() {
+        if let Some(entry) = entries.get(i) {
+            if let Some(cell) = grid.get_mut(coord) {
+                for (j, ch) in entry.chars().enumerate() {
+                    if ch == '1' && j < 9 {
+                        cell.draft.insert((j + 1) as u8);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn deserialize_solution(data: &str) -> HashMap<CubeCoord, u8> {
@@ -279,6 +327,8 @@ pub fn deserialize_grid_from(
                 answer,
                 given: is_given,
                 user_value,
+                draft: std::collections::BTreeSet::new(),
+                draft_visible: true,
             },
         );
     }

@@ -76,6 +76,8 @@ tr_map! {
     "btn.undo" => { zh: "[Z]Undo", en: "[Z]Undo", ja: "[Z]戻す" },
     "btn.guide" => { zh: "[G]Guide", en: "[G]Guide", ja: "[G]ｶﾞｲﾄﾞ" },
     "btn.mode" => { zh: "[M]Mode", en: "[M]Mode", ja: "[M]ﾓｰﾄﾞ" },
+    "btn.draft" => { zh: "[P]Draft", en: "[P]Draft", ja: "[P]下書" },
+    "btn.draft_on" => { zh: "[P]Draft✓", en: "[P]Draft✓", ja: "[P]下書✓" },
     "btn.menu" => { zh: "[Q]Menu", en: "[Q]Menu", ja: "[Q]ﾒﾆｭｰ" },
 
     // Messages
@@ -84,6 +86,9 @@ tr_map! {
     "msg.gen_cancelled" => { zh: "生成已中断", en: "Generation cancelled", ja: "生成中断" },
     "msg.guide_on" => { zh: "辅助模式已开启", en: "Guide mode ON", ja: "ガイドモード ON" },
     "msg.guide_off" => { zh: "辅助模式已关闭", en: "Guide mode OFF", ja: "ガイドモード OFF" },
+    "msg.draft_on" => { zh: "草稿模式已开启", en: "Draft mode ON", ja: "下書モード ON" },
+    "msg.draft_off" => { zh: "草稿模式已关闭", en: "Draft mode OFF", ja: "下書モード OFF" },
+    "msg.draft_too_small" => { zh: "屏幕尺寸不足", en: "Screen too small for draft", ja: "画面が小さすぎ" },
     "msg.mode_switched" => { zh: "已切换为 {} 模式", en: "Switched to {} mode", ja: "{}モードに切替" },
     "msg.saved" => { zh: "设置已保存", en: "Settings saved", ja: "設定保存済み" },
     "msg.overflow_auto" => { zh: "内容超出边框, 已自动切换为滚动模式", en: "Content overflow, auto-switched to scrollbar mode", ja: "内容が枠を超えたため、スクロールﾓｰﾄﾞに自動切替" },

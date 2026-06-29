@@ -22,6 +22,8 @@ pub struct GameState {
     pub errors_max: u32,
     /// 对局是否因容错耗尽而冻结
     pub frozen: bool,
+    /// 是否处于草稿模式
+    pub draft_mode: bool,
 }
 
 impl GameState {
@@ -42,6 +44,7 @@ impl GameState {
             errors: 0,
             errors_max: 3,
             frozen: false,
+            draft_mode: false,
         }
     }
 
@@ -55,6 +58,13 @@ impl GameState {
                 return;
             }
             cell.user_value = value;
+            // 填入数字时,标记草稿为隐藏(用于状态一致性,渲染依赖 value.is_none())
+            // Erase 时由调用方将其置回 true
+            if value.is_some() {
+                cell.draft_visible = false;
+            } else {
+                cell.draft_visible = true;
+            }
             self.push_history(MoveRecord { coord, old });
         }
     }
@@ -75,6 +85,8 @@ impl GameState {
         let record = self.history[self.history_index].clone();
         if let Some(cell) = self.grid.get_mut(&record.coord) {
             cell.user_value = record.old;
+            // 状态一致性: 撤销后若 value 变为 None,草稿应可见
+            cell.draft_visible = record.old.is_none();
         }
     }
 
@@ -82,6 +94,7 @@ impl GameState {
         for (coord, cell) in self.grid.cells.iter_mut() {
             if !cell.given {
                 cell.user_value = self.solution.get(coord).copied();
+                cell.draft_visible = false;
             }
         }
         self.completed = true;

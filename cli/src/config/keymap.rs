@@ -57,6 +57,7 @@ pub enum Action {
     Undo,
     ToggleGuidance,
     ToggleMode,
+    ToggleDraft,
     NewGame,
 
     // ── 按钮 ──
@@ -147,6 +148,7 @@ impl Action {
             Action::Undo => "Undo",
             Action::ToggleGuidance => "Toggle Guide",
             Action::ToggleMode => "Toggle Mode",
+            Action::ToggleDraft => "Toggle Draft",
             Action::NewGame => "New Game",
             Action::BtnPagePrev => "Btn Page ←",
             Action::BtnPageNext => "Btn Page →",
@@ -210,6 +212,7 @@ impl Action {
             | Action::Undo
             | Action::ToggleGuidance
             | Action::ToggleMode
+            | Action::ToggleDraft
             | Action::NewGame => ActionGroup::Gameplay,
             Action::BtnPagePrev | Action::BtnPageNext => ActionGroup::ButtonBar,
             Action::ShopFocus | Action::ShopUp | Action::ShopDown | Action::ShopBuy => {
@@ -488,6 +491,7 @@ impl Default for Keymap {
                 KeyBinding::new(Action::Undo, Key::Char('z')),
                 KeyBinding::new(Action::ToggleGuidance, Key::Char('g')),
                 KeyBinding::new(Action::ToggleMode, Key::Char('m')),
+                KeyBinding::new(Action::ToggleDraft, Key::Char('p')),
                 KeyBinding::new(Action::NewGame, Key::Char('n')),
                 KeyBinding::new(Action::Quit, Key::Char('q')),
                 KeyBinding::new(Action::Erase, Key::Backspace),

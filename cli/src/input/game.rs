@@ -171,21 +171,73 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             return EventResult::StartGenerating(app.game.difficulty);
         }
         Some(Action::ToggleMode) => {
-            app.render_mode = app.render_mode.toggle();
+            let new_mode = app.render_mode.toggle();
+            // 如果处于草稿模式且新模式格子尺寸过小,先退出草稿模式防止在看不见的情况下输入
+            if app.game.draft_mode {
+                let new_cw = new_mode.cell_width(&app.settings);
+                let new_ch = new_mode.cell_height();
+                if new_cw < 3 || new_ch < 3 {
+                    app.game.draft_mode = false;
+                    let lang = Lang::from_code(&app.settings.language);
+                    app.set_message(
+                        i18n::t("msg.draft_off", lang).to_string(),
+                        Duration::from_secs(2),
+                    );
+                }
+            }
+            app.render_mode = new_mode;
             let lang = Lang::from_code(&app.settings.language);
             let label = mode_label(app.render_mode, lang);
             app.set_message(label.to_string(), Duration::from_secs(2));
             app.push_log(format!("Mode: {}", label), 50);
         }
+        Some(Action::ToggleDraft) => {
+            // 检查格子尺寸是否足够
+            let cw = app.render_mode.cell_width(&app.settings);
+            let ch = app.render_mode.cell_height();
+            let lang = Lang::from_code(&app.settings.language);
+            if cw < 3 || ch < 3 {
+                app.set_message(
+                    i18n::t("msg.draft_too_small", lang).to_string(),
+                    Duration::from_secs(2),
+                );
+                return EventResult::Continue;
+            }
+            let was_on = app.game.draft_mode;
+            app.game.draft_mode = !was_on;
+            // 注意: 不再根据模式开关设置 draft_visible。
+            // 草稿内容在两种模式下都可见,仅在格子填入 user_value 时被隐藏(Erase 时恢复)。
+            let key = if app.game.draft_mode { "msg.draft_on" } else { "msg.draft_off" };
+            app.set_message(i18n::t(key, lang).to_string(), Duration::from_secs(2));
+            app.push_log(i18n::t(key, lang), 50);
+        }
         Some(Action::Erase) => {
             let coord = current_coord(app);
-            if let Some(cell) = app.game.grid.get(&coord) {
-                if !cell.given {
-                    let old = cell.user_value;
-                    app.game.set_value(coord, None);
-                    app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, None);
-                    app.push_log("Erase", 50);
+            // 先读取需要的信息
+            let (has_value, old, has_draft) = {
+                let cell = app.game.grid.get(&coord);
+                match cell {
+                    Some(c) if !c.given => (c.user_value.is_some(), c.user_value, !c.draft.is_empty()),
+                    _ => (false, None, false),
                 }
+            };
+            if has_value {
+                app.game.set_value(coord, None);
+                app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, None);
+                // 擦除确定值后，如有草稿则标记可见
+                if has_draft {
+                    if let Some(cell) = app.game.grid.get_mut(&coord) {
+                        cell.draft_visible = true;
+                    }
+                }
+                app.push_log("Erase", 50);
+            } else if has_draft {
+                // 擦除草稿: 清除所有草稿内容并标记可见
+                if let Some(cell) = app.game.grid.get_mut(&coord) {
+                    cell.draft.clear();
+                    cell.draft_visible = true;
+                }
+                app.push_log("Erase Draft", 50);
             }
         }
         Some(Action::ToggleGuidance) => {
@@ -226,6 +278,21 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
         Some(Action::Number(n)) => {
             let value = n;
             let coord = current_coord(app);
+            if app.game.draft_mode {
+                // 草稿模式: 切换草稿数字
+                if let Some(cell) = app.game.grid.get_mut(&coord) {
+                    if cell.given || cell.user_value.is_some() {
+                        return EventResult::Continue;
+                    }
+                    cell.toggle_draft(value);
+                    cell.draft_visible = true;
+                }
+                app.push_log(
+                    format!("Draft toggle {} at R{}C{}", value, app.cursor.1 + 1, app.cursor.0 + 1),
+                    50,
+                );
+                return EventResult::Continue;
+            }
             let old = app.game.grid.get(&coord).and_then(|c| c.user_value);
             // 跳过已给定/已有相同值的格子
             if let Some(cell) = app.game.grid.get(&coord) {
@@ -235,6 +302,10 @@ fn handle_key(app: &mut App, key: KeyEvent) -> EventResult {
             }
             app.game.set_value(coord, Some(value));
             app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, Some(value));
+            // 设置确定值后清除该格的草稿
+            if let Some(cell) = app.game.grid.get_mut(&coord) {
+                cell.draft.clear();
+            }
             // 容错检测
             let is_wrong = app.check_and_consume_error(coord, value);
             if is_wrong {
@@ -522,6 +593,17 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
     match btn {
         ButtonId::Number(n) => {
             let coord = current_coord(app);
+            if app.game.draft_mode {
+                // 草稿模式: 切换草稿数字
+                if let Some(cell) = app.game.grid.get_mut(&coord) {
+                    if cell.given || cell.user_value.is_some() {
+                        return EventResult::Continue;
+                    }
+                    cell.toggle_draft(n);
+                    cell.draft_visible = true;
+                }
+                return EventResult::Continue;
+            }
             let old = app.game.grid.get(&coord).and_then(|c| c.user_value);
             // 跳过已给定/已有相同值的格子
             if let Some(cell) = app.game.grid.get(&coord) {
@@ -531,6 +613,10 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
             }
             app.game.set_value(coord, Some(n));
             app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, Some(n));
+            // 设置确定值后清除该格的草稿
+            if let Some(cell) = app.game.grid.get_mut(&coord) {
+                cell.draft.clear();
+            }
             // 容错检测
             let is_wrong = app.check_and_consume_error(coord, n);
             if is_wrong {
@@ -556,11 +642,25 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
         }
         ButtonId::Erase => {
             let coord = current_coord(app);
-            if let Some(cell) = app.game.grid.get(&coord) {
-                if !cell.given {
-                    let old = cell.user_value;
-                    app.game.set_value(coord, None);
-                    app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, None);
+            let (has_value, old, has_draft) = {
+                let cell = app.game.grid.get(&coord);
+                match cell {
+                    Some(c) if !c.given => (c.user_value.is_some(), c.user_value, !c.draft.is_empty()),
+                    _ => (false, None, false),
+                }
+            };
+            if has_value {
+                app.game.set_value(coord, None);
+                app.adjust_digit_remaining(coord.x, coord.y, coord.z, old, None);
+                if has_draft {
+                    if let Some(cell) = app.game.grid.get_mut(&coord) {
+                        cell.draft_visible = true;
+                    }
+                }
+            } else if has_draft {
+                if let Some(cell) = app.game.grid.get_mut(&coord) {
+                    cell.draft.clear();
+                    cell.draft_visible = true;
                 }
             }
         }
@@ -587,12 +687,44 @@ fn execute_button(app: &mut App, btn: ButtonId) -> EventResult {
             app.set_message(i18n::t(key, lang).to_string(), Duration::from_secs(2));
         }
         ButtonId::ToggleMode => {
-            app.render_mode = app.render_mode.toggle();
+            let new_mode = app.render_mode.toggle();
+            // 如果处于草稿模式且新模式格子尺寸过小,先退出草稿模式防止在看不见的情况下输入
+            if app.game.draft_mode {
+                let new_cw = new_mode.cell_width(&app.settings);
+                let new_ch = new_mode.cell_height();
+                if new_cw < 3 || new_ch < 3 {
+                    app.game.draft_mode = false;
+                    let lang = Lang::from_code(&app.settings.language);
+                    app.set_message(
+                        i18n::t("msg.draft_off", lang).to_string(),
+                        Duration::from_secs(2),
+                    );
+                }
+            }
+            app.render_mode = new_mode;
             let lang = Lang::from_code(&app.settings.language);
             app.set_message(
                 format!("{}", mode_label(app.render_mode, lang)),
                 Duration::from_secs(2),
             );
+        }
+        ButtonId::ToggleDraft => {
+            let cw = app.render_mode.cell_width(&app.settings);
+            let ch = app.render_mode.cell_height();
+            let lang = Lang::from_code(&app.settings.language);
+            if cw < 3 || ch < 3 {
+                app.set_message(
+                    i18n::t("msg.draft_too_small", lang).to_string(),
+                    Duration::from_secs(2),
+                );
+                return EventResult::Continue;
+            }
+            let was_on = app.game.draft_mode;
+            app.game.draft_mode = !was_on;
+            // 注意: 不再根据模式开关设置 draft_visible。
+            // 草稿内容在两种模式下都可见,仅在格子填入 user_value 时被隐藏(Erase 时恢复)。
+            let key = if app.game.draft_mode { "msg.draft_on" } else { "msg.draft_off" };
+            app.set_message(i18n::t(key, lang).to_string(), Duration::from_secs(2));
         }
         ButtonId::Quit => return EventResult::BackToMenu,
         ButtonId::ToolCube => {
@@ -643,6 +775,7 @@ fn log_button_click(app: &mut App, btn: ButtonId) {
             "Guide"
         }
         ButtonId::ToggleMode => "Mode",
+        ButtonId::ToggleDraft => "Draft",
         ButtonId::Quit => "Menu",
         ButtonId::ToolCube => "Tool🎲",
         ButtonId::ToolSnake3 => "Tool🐍3",
